@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Resume Screening Portal{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-speedometer2 me-2"></i>Dashboard</h2>
+    <div>
+        <button class="btn btn-outline-primary me-2" onclick="syncData()">
+            <i class="bi bi-arrow-repeat me-1"></i> Sync Data
+        </button>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card candidates">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Jobs</h6>
+                        <h2 class="mb-0" id="total-jobs">{{ stats.total_jobs }}</h2>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-briefcase" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card screened">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Applications</h6>
+                        <h2 class="mb-0" id="total-apps">{{ stats.total_applications }}</h2>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-people" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card pending">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Screening Results</h6>
+                        <h2 class="mb-0" id="total-results">{{ stats.total_results }}</h2>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-check2-square" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Jobs with Screening Status -->
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Recent Jobs</h5>
+        <a href="{{ url_for('portal.jobs_list') }}" class="btn btn-sm btn-outline-primary">View All</a>
+    </div>
+    <div class="card-body">
+        {% if jobs %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Job Title</th>
+                        <th>Company</th>
+                        <th>Applications</th>
+                        <th>Screened</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs[:10] %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="text-decoration-none fw-semibold">
+                                {{ job.title }}
+                            </a>
+                        </td>
+                        <td>{{ job.company }}</td>
+                        <td>
+                            <span class="badge bg-primary">{{ job.application_count }}</span>
+                        </td>
+                        <td>
+                            {% if job.screened_count > 0 %}
+                            <span class="badge bg-success">{{ job.screened_count }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">0</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job.screened_count > 0 %}
+                            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Screened</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+            <p class="text-muted mt-3">No jobs found. Click "Sync Data" to fetch jobs from TalentMatch API.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Sync Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Syncing Data</h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mb-0" id="syncStatus">Syncing jobs and applications from TalentMatch API...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function syncData() {
+    const modal = new bootstrap.Modal(document.getElementById('syncModal'));
+    modal.show();
+
+    try {
+        const response = await fetch('/api/sync/all', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('syncStatus').innerHTML = `
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Synced ${data.jobs_synced} jobs and ${data.applications_synced} applications!
+            `;
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
+        } else {
+            document.getElementById('syncStatus').innerHTML = `
+                <i class="bi bi-x-circle text-danger me-2"></i>
+                Sync failed: ${data.message}
+            `;
+        }
+    } catch (error) {
+        document.getElementById('syncStatus').innerHTML = `
+            <i class="bi bi-x-circle text-danger me-2"></i>
+            Error: ${error.message}
+        `;
+    }
+}
+</script>
+{% endblock %}

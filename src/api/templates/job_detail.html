@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+
+{% block title %}{{ job.title }} - Resume Screening Portal{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.dashboard') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.jobs_list') }}">Jobs</a></li>
+        <li class="breadcrumb-item active">{{ job.title }}</li>
+    </ol>
+</nav>
+
+<!-- Job Header -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h2 class="mb-2">{{ job.title }}</h2>
+                <p class="text-muted mb-2">
+                    <i class="bi bi-building me-1"></i> {{ job.company }}
+                    {% if job.location %}
+                    <span class="ms-3"><i class="bi bi-geo-alt me-1"></i> {{ job.location }}</span>
+                    {% endif %}
+                </p>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-primary fs-6">
+                        <i class="bi bi-people me-1"></i> {{ applications|length }} Applicants
+                    </span>
+                    {% if results %}
+                    <span class="badge bg-success fs-6">
+                        <i class="bi bi-check-circle me-1"></i> Screened
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                {% if not results %}
+                <button class="btn btn-screen btn-lg" onclick="runScreening('{{ job.id }}')">
+                    <span class="loading-spinner spinner-border spinner-border-sm me-2"></span>
+                    <i class="bi bi-play-fill me-1"></i> Run Screening
+                </button>
+                {% else %}
+                <button class="btn btn-outline-primary btn-lg" onclick="runScreening('{{ job.id }}')">
+                    <i class="bi bi-arrow-repeat me-1"></i> Re-Screen
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Job Details Accordion -->
+<div class="accordion mb-4" id="jobDetails">
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#qualifications">
+                <i class="bi bi-list-check me-2"></i> Qualifications & Requirements
+            </button>
+        </h2>
+        <div id="qualifications" class="accordion-collapse collapse" data-bs-parent="#jobDetails">
+            <div class="accordion-body">
+                {% if job.qualifications %}
+                <ul class="list-unstyled">
+                    {% for qual in job.qualifications %}
+                    <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>{{ qual }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">No qualifications listed.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#responsibilities">
+                <i class="bi bi-briefcase me-2"></i> Responsibilities
+            </button>
+        </h2>
+        <div id="responsibilities" class="accordion-collapse collapse" data-bs-parent="#jobDetails">
+            <div class="accordion-body">
+                {% if job.responsibilities %}
+                <ul class="list-unstyled">
+                    {% for resp in job.responsibilities %}
+                    <li class="mb-2"><i class="bi bi-arrow-right text-primary me-2"></i>{{ resp }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">No responsibilities listed.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Screening Results -->
+{% if results %}
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-trophy me-2"></i>Ranked Candidates</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th style="width: 60px;">Rank</th>
+                        <th>Candidate</th>
+                        <th class="text-center" style="width: 100px;">Score</th>
+                        <th class="text-center" style="width: 120px;">Percentage</th>
+                        <th style="width: 180px;">Recommendation</th>
+                        <th style="width: 100px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr>
+                        <td>
+                            <div class="rank-badge {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
+                                {{ loop.index }}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{{ result.candidate_name }}</div>
+                            <small class="text-muted">ID: {{ result.candidate_id }}</small>
+                        </td>
+                        <td class="text-center">
+                            <span class="fs-5 fw-bold">{{ "%.2f"|format(result.total_weighted_score) }}</span>
+                            <span class="text-muted">/5</span>
+                        </td>
+                        <td class="text-center">
+                            <div class="progress">
+                                <div class="progress-bar {% if result.percentage >= 80 %}bg-success{% elif result.percentage >= 65 %}bg-warning{% else %}bg-danger{% endif %}"
+                                     style="width: {{ result.percentage }}%">
+                                    {{ "%.1f"|format(result.percentage) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if 'STRONG YES' in result.recommendation %}
+                            <span class="recommendation-badge badge-strong-yes">
+                                <i class="bi bi-star-fill me-1"></i>{{ result.recommendation }}
+                            </span>
+                            {% elif 'YES' in result.recommendation %}
+                            <span class="recommendation-badge badge-yes">
+                                <i class="bi bi-check-circle-fill me-1"></i>{{ result.recommendation }}
+                            </span>
+                            {% elif 'Maybe' in result.recommendation %}
+                            <span class="recommendation-badge badge-maybe">
+                                <i class="bi bi-question-circle-fill me-1"></i>{{ result.recommendation }}
+                            </span>
+                            {% else %}
+                            <span class="recommendation-badge badge-no">
+                                <i class="bi bi-x-circle-fill me-1"></i>{{ result.recommendation }}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('portal.candidate_detail', job_id=job.id, candidate_id=result.candidate_id) }}"
+                               class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Applications List (No Screening Yet) -->
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-people me-2"></i>Applicants</h5>
+    </div>
+    <div class="card-body">
+        {% if applications %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Cover Letter</th>
+                        <th>Resume</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for app in applications %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="fw-semibold">{{ app.name }}</td>
+                        <td>{{ app.email }}</td>
+                        <td>
+                            {% if app.has_cover_letter %}
+                            <span class="badge bg-success"><i class="bi bi-check"></i> Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary"><i class="bi bi-x"></i> No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if app.has_resume %}
+                            <span class="badge bg-success"><i class="bi bi-check"></i> Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary"><i class="bi bi-x"></i> No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="bi bi-people text-muted" style="font-size: 3rem;"></i>
+            <p class="text-muted mt-3">No applications synced yet.</p>
+            <button class="btn btn-primary" onclick="syncApplications('{{ job.id }}')">
+                <i class="bi bi-arrow-repeat me-1"></i> Sync Applications
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Screening Modal -->
+<div class="modal fade" id="screeningModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Running Screening</h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <p class="mb-0" id="screeningStatus">Evaluating candidates...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function runScreening(jobId) {
+    const modal = new bootstrap.Modal(document.getElementById('screeningModal'));
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('screeningStatus').innerHTML = `
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Screened ${data.candidates_screened} candidates!
+            `;
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            document.getElementById('screeningStatus').innerHTML = `
+                <i class="bi bi-x-circle text-danger me-2"></i>
+                ${data.message}
+            `;
+        }
+    } catch (error) {
+        document.getElementById('screeningStatus').innerHTML = `
+            <i class="bi bi-x-circle text-danger me-2"></i>
+            Error: ${error.message}
+        `;
+    }
+}
+
+async function syncApplications(jobId) {
+    const modal = new bootstrap.Modal(document.getElementById('screeningModal'));
+    document.getElementById('screeningStatus').textContent = 'Syncing applications...';
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/sync/jobs/${jobId}/applications`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('screeningStatus').innerHTML = `
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Synced ${data.applications_synced} applications!
+            `;
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            document.getElementById('screeningStatus').innerHTML = `
+                <i class="bi bi-x-circle text-danger me-2"></i>
+                ${data.message}
+            `;
+        }
+    } catch (error) {
+        document.getElementById('screeningStatus').innerHTML = `
+            <i class="bi bi-x-circle text-danger me-2"></i>
+            Error: ${error.message}
+        `;
+    }
+}
+</script>
+{% endblock %}

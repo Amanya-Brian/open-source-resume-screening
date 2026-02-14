@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs - Resume Screening Portal{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-briefcase me-2"></i>Job Listings</h2>
+    <div>
+        <button class="btn btn-outline-primary" onclick="syncJobs()">
+            <i class="bi bi-arrow-repeat me-1"></i> Sync Jobs
+        </button>
+    </div>
+</div>
+
+{% if jobs %}
+<div class="row">
+    {% for job in jobs %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="text-decoration-none">
+                        {{ job.title }}
+                    </a>
+                </h5>
+                <p class="text-muted mb-2">
+                    <i class="bi bi-building me-1"></i> {{ job.company }}
+                </p>
+                {% if job.location %}
+                <p class="text-muted mb-2">
+                    <i class="bi bi-geo-alt me-1"></i> {{ job.location }}
+                </p>
+                {% endif %}
+                <div class="d-flex gap-2 mb-3">
+                    <span class="badge bg-primary">
+                        <i class="bi bi-people me-1"></i> {{ job.application_count }} Applicants
+                    </span>
+                    {% if job.screened_count > 0 %}
+                    <span class="badge bg-success">
+                        <i class="bi bi-check-circle me-1"></i> Screened
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-footer bg-transparent">
+                <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="btn btn-sm btn-primary w-100">
+                    View Details <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-briefcase text-muted" style="font-size: 3rem;"></i>
+        <p class="text-muted mt-3 mb-0">No jobs found. Click "Sync Jobs" to fetch from TalentMatch API.</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Sync Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Syncing Jobs</h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <p class="mb-0" id="syncStatus">Fetching jobs from TalentMatch API...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function syncJobs() {
+    const modal = new bootstrap.Modal(document.getElementById('syncModal'));
+    modal.show();
+
+    try {
+        const response = await fetch('/api/sync/jobs', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('syncStatus').innerHTML = `
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Synced ${data.jobs_synced} jobs!
+            `;
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            document.getElementById('syncStatus').innerHTML = `
+                <i class="bi bi-x-circle text-danger me-2"></i>
+                ${data.message}
+            `;
+        }
+    } catch (error) {
+        document.getElementById('syncStatus').innerHTML = `
+            <i class="bi bi-x-circle text-danger me-2"></i>
+            Error: ${error.message}
+        `;
+    }
+}
+</script>
+{% endblock %}

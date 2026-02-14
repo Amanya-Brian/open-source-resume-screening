@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}{{ result.candidate_name }} - Resume Screening Portal{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.dashboard') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.jobs_list') }}">Jobs</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.job_detail', job_id=job.id) }}">{{ job.title }}</a></li>
+        <li class="breadcrumb-item active">{{ result.candidate_name }}</li>
+    </ol>
+</nav>
+
+<!-- Candidate Header -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center">
+                    <div class="rank-badge {% if result.rank == 1 %}rank-1{% elif result.rank == 2 %}rank-2{% elif result.rank == 3 %}rank-3{% else %}rank-other{% endif %} me-3"
+                         style="width: 60px; height: 60px; font-size: 1.5rem;">
+                        {{ result.rank }}
+                    </div>
+                    <div>
+                        <h2 class="mb-1">{{ result.candidate_name }}</h2>
+                        <p class="text-muted mb-0">
+                            <i class="bi bi-briefcase me-1"></i> Applying for: {{ job.title }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                {% if 'STRONG YES' in result.recommendation %}
+                <span class="recommendation-badge badge-strong-yes fs-5">
+                    <i class="bi bi-star-fill me-1"></i>{{ result.recommendation }}
+                </span>
+                {% elif 'YES' in result.recommendation %}
+                <span class="recommendation-badge badge-yes fs-5">
+                    <i class="bi bi-check-circle-fill me-1"></i>{{ result.recommendation }}
+                </span>
+                {% elif 'Maybe' in result.recommendation %}
+                <span class="recommendation-badge badge-maybe fs-5">
+                    <i class="bi bi-question-circle-fill me-1"></i>{{ result.recommendation }}
+                </span>
+                {% else %}
+                <span class="recommendation-badge badge-no fs-5">
+                    <i class="bi bi-x-circle-fill me-1"></i>{{ result.recommendation }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Score Summary -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Total Weighted Score</h6>
+                <div class="display-4 fw-bold text-primary">{{ "%.2f"|format(result.total_weighted_score) }}</div>
+                <div class="text-muted">out of 5.0</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Percentage Score</h6>
+                <div class="display-4 fw-bold {% if result.percentage >= 80 %}text-success{% elif result.percentage >= 65 %}text-warning{% else %}text-danger{% endif %}">
+                    {{ "%.1f"|format(result.percentage) }}%
+                </div>
+                <div class="progress mt-2" style="height: 10px;">
+                    <div class="progress-bar {% if result.percentage >= 80 %}bg-success{% elif result.percentage >= 65 %}bg-warning{% else %}bg-danger{% endif %}"
+                         style="width: {{ result.percentage }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Ranking</h6>
+                <div class="display-4 fw-bold">
+                    #{{ result.rank }}
+                </div>
+                <div class="text-muted">of {{ total_candidates }} candidates</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Scoring Matrix -->
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Detailed Scoring Matrix</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover criteria-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">Criterion</th>
+                        <th class="text-center" style="width: 12%;">Weight</th>
+                        <th class="text-center" style="width: 12%;">Raw Score</th>
+                        <th class="text-center" style="width: 15%;">Score Level</th>
+                        <th class="text-center" style="width: 12%;">Weighted</th>
+                        <th>Evidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for score in result.criteria_scores %}
+                    <tr>
+                        <td class="fw-semibold">{{ score.criterion_name }}</td>
+                        <td class="text-center">
+                            <span class="weight-badge">{{ (score.weight * 100)|int }}%</span>
+                        </td>
+                        <td class="text-center">
+                            <span class="fs-5 score-cell score-{{ score.raw_score }}">{{ score.raw_score }}</span>
+                            <span class="text-muted">/5</span>
+                        </td>
+                        <td class="text-center">
+                            {% if score.raw_score == 5 %}
+                            <span class="badge bg-success">Exceeds Significantly</span>
+                            {% elif score.raw_score == 4 %}
+                            <span class="badge bg-success">Exceeds</span>
+                            {% elif score.raw_score == 3 %}
+                            <span class="badge bg-primary">Meets</span>
+                            {% elif score.raw_score == 2 %}
+                            <span class="badge bg-warning text-dark">Partially Meets</span>
+                            {% elif score.raw_score == 1 %}
+                            <span class="badge bg-danger">Does Not Meet</span>
+                            {% else %}
+                            <span class="badge bg-secondary">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center fw-bold">{{ "%.2f"|format(score.weighted_score) }}</td>
+                        <td><small class="text-muted">{{ score.evidence }}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="bg-light">
+                    <tr>
+                        <td class="fw-bold">Total</td>
+                        <td class="text-center fw-bold">100%</td>
+                        <td></td>
+                        <td></td>
+                        <td class="text-center fw-bold fs-5">{{ "%.2f"|format(result.total_weighted_score) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Strengths and Concerns -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-hand-thumbs-up me-2"></i>Strengths</h5>
+            </div>
+            <div class="card-body">
+                {% if result.strengths %}
+                <ul class="list-unstyled mb-0">
+                    {% for strength in result.strengths %}
+                    <li class="strength-item mb-2">
+                        <i class="bi bi-check-circle-fill me-2"></i>{{ strength }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">No specific strengths identified.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Concerns</h5>
+            </div>
+            <div class="card-body">
+                {% if result.concerns %}
+                <ul class="list-unstyled mb-0">
+                    {% for concern in result.concerns %}
+                    <li class="concern-item mb-2">
+                        <i class="bi bi-exclamation-circle-fill me-2"></i>{{ concern }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">No specific concerns identified.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Back Button -->
+<div class="mt-4">
+    <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i> Back to Job
+    </a>
+</div>
+{% endblock %}
