@@ -4,6 +4,9 @@ import logging
 import re
 from typing import Any, Optional
 
+from src.agents.fairness_agent import FairnessAgent, FairnessInput
+from src.agents.base import AgentContext
+from src.models.schemas import RankedCandidate, ScreeningScore, Student, FairnessReport
 from src.models.scoring import (
     CandidateEvaluation,
     CriterionScore,
@@ -97,8 +100,11 @@ class ScreeningService:
         for i, eval in enumerate(evaluations, 1):
             eval.detailed_notes = f"Rank #{i} of {len(evaluations)} candidates"
 
-        # Store results in MongoDB
-        await self._store_results(job_id, evaluations)
+        # Run fairness analysis
+        fairness_report = await self._run_fairness_analysis(job_id, evaluations, applications)
+
+        # Store results in MongoDB (including fairness report)
+        await self._store_results(job_id, evaluations, fairness_report)
 
         return evaluations
 
@@ -244,19 +250,45 @@ class ScreeningService:
         criteria_scores = []
         llm_scores = result.get("scores", [])
 
+        # DEBUG: Log what LLM returned
+        logger.info(f"LLM returned {len(llm_scores)} scores")
+        if llm_scores:
+            logger.debug(f"LLM scores: {llm_scores}")
+
         for criterion in DefaultCriteria.get_all():
-            # Find matching score from LLM
+            # Find matching score from LLM - try multiple matching strategies
+            llm_score = None
+
+            # Strategy 1: Exact key match
             llm_score = next(
-                (s for s in llm_scores if s.get("criterion") == criterion.key or s.get("criterion") == criterion.name),
+                (s for s in llm_scores if s.get("criterion") == criterion.key),
                 None
             )
+
+            # Strategy 2: Exact name match
+            if not llm_score:
+                llm_score = next(
+                    (s for s in llm_scores if s.get("criterion") == criterion.name.lower()),
+                    None
+                )
+
+            # Strategy 3: Fuzzy name match (e.g., "technical_skills" matches "technical skills")
+            if not llm_score:
+                criterion_normalized = criterion.key.replace("_", " ")
+                llm_score = next(
+                    (s for s in llm_scores
+                     if s.get("criterion", "").lower().replace("_", " ") == criterion_normalized),
+                    None
+                )
 
             if llm_score:
                 score = min(5, max(0, int(llm_score.get("score", 2))))
                 evidence = llm_score.get("evidence", "LLM evaluation")
+                logger.debug(f"Matched {criterion.key}: score={score}")
             else:
                 score = 2  # Default if not found
                 evidence = "No specific evaluation provided"
+                logger.warning(f"No LLM score found for {criterion.key}, defaulting to 2")
 
             criteria_scores.append(CriterionScore(
                 criterion_key=criterion.key,
@@ -680,10 +712,105 @@ class ScreeningService:
 
         return concerns[:5]  # Limit to top 5
 
+    async def _run_fairness_analysis(
+        self,
+        job_id: str,
+        evaluations: list[CandidateEvaluation],
+        applications: list[dict[str, Any]],
+    ) -> Optional[FairnessReport]:
+        """Run fairness analysis on screening results.
+
+        Args:
+            job_id: Job listing ID
+            evaluations: Candidate evaluations with scores
+            applications: Raw application data with demographic info
+
+        Returns:
+            FairnessReport or None if analysis fails
+        """
+        try:
+            logger.info(f"Running fairness analysis for job {job_id}...")
+
+            # Convert evaluations to RankedCandidate format
+            ranked_candidates = [
+                RankedCandidate(
+                    candidate_id=eval.candidate_id,
+                    rank=idx + 1,
+                    overall_score=eval.total_weighted_score,
+                    percentile=100 * (len(evaluations) - idx) / len(evaluations),
+                    recommendation=eval.recommendation,
+                )
+                for idx, eval in enumerate(evaluations)
+            ]
+
+            # Convert applications to Student format
+            students = []
+            for app in applications:
+                student = Student(
+                    id=app.get("student_id", ""),
+                    firstname=app.get("student_firstname", ""),
+                    lastname=app.get("student_lastname", ""),
+                    email=app.get("student_email", ""),
+                    # Extract demographic info (if available)
+                    gender=app.get("gender"),
+                    age_group=app.get("age_group"),
+                    ethnicity=app.get("ethnicity"),
+                    nationality=app.get("nationality"),
+                )
+                students.append(student)
+
+            # Convert evaluations to ScreeningScore format
+            scores = {
+                eval.candidate_id: ScreeningScore(
+                    candidate_id=eval.candidate_id,
+                    overall_score=eval.total_weighted_score,
+                    component_scores={
+                        cs.criterion_key: cs.raw_score
+                        for cs in eval.criteria_scores
+                    },
+                )
+                for eval in evaluations
+            }
+
+            # Create FairnessAgent and run analysis
+            fairness_agent = FairnessAgent()
+            fairness_input = FairnessInput(
+                ranked_candidates=ranked_candidates,
+                candidates=students,
+                scores=scores,
+                job_id=job_id,
+            )
+
+            context = AgentContext(session_id=f"screening-{job_id}")
+            result = await fairness_agent.execute(fairness_input, context)
+
+            if result.success and result.output:
+                fairness_report = result.output.fairness_report
+
+                # Log fairness results
+                logger.info(
+                    f"Fairness analysis complete: "
+                    f"DIR={fairness_report.metrics.disparate_impact_ratio:.3f}, "
+                    f"Compliant={fairness_report.is_compliant}"
+                )
+
+                if not fairness_report.is_compliant:
+                    logger.warning(f"Fairness violations detected: {fairness_report.violations}")
+
+                return fairness_report
+            else:
+                logger.error(f"Fairness analysis failed: {result.errors}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Fairness analysis error: {e}", exc_info=True)
+            return None
+
     async def _store_results(
         self,
         job_id: str,
         evaluations: list[CandidateEvaluation],
+        fairness_report: Optional[FairnessReport] = None,
     ) -> None:
         """Store screening results in MongoDB."""
         for eval in evaluations:
@@ -719,3 +846,34 @@ class ScreeningService:
             )
 
         logger.info(f"Stored {len(evaluations)} screening results for job {job_id}")
+
+        # Store fairness report
+        if fairness_report:
+            fairness_doc = {
+                "_id": f"fairness-{job_id}",
+                "job_id": job_id,
+                "session_id": fairness_report.session_id,
+                "is_compliant": fairness_report.is_compliant,
+                "metrics": {
+                    "disparate_impact_ratio": fairness_report.metrics.disparate_impact_ratio,
+                    "demographic_parity": fairness_report.metrics.demographic_parity,
+                    "equal_opportunity": fairness_report.metrics.equal_opportunity,
+                    "attribute_variance": fairness_report.metrics.attribute_variance,
+                },
+                "violations": fairness_report.violations,
+                "recommendations": fairness_report.recommendations,
+                "created_at": fairness_report.created_at.isoformat() if fairness_report.created_at else None,
+            }
+
+            await self.mongo.update_one(
+                "fairness_reports",
+                {"_id": fairness_doc["_id"]},
+                {"$set": fairness_doc},
+                upsert=True
+            )
+
+            logger.info(
+                f"Stored fairness report for job {job_id}: "
+                f"Compliant={fairness_report.is_compliant}, "
+                f"DIR={fairness_report.metrics.disparate_impact_ratio:.3f}"
+            )

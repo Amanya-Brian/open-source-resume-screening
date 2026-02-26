@@ -190,18 +190,34 @@ CANDIDATE'S APPLICATION:
 Respond with ONLY the JSON evaluation, no explanations:"""
 
         try:
+            # Check if Ollama is available first
+            if not self.is_available():
+                logger.error("Ollama is not running! Start with: ollama serve")
+                return self._default_evaluation(criteria)
+
             response = self.generate(prompt, system_prompt=system_prompt, max_tokens=600)
+
+            # Log raw response for debugging
+            logger.debug(f"LLM raw response (first 500 chars): {response[:500]}")
+
             result = self._parse_json_response(response)
 
             # Validate result has scores
             if not result.get("scores"):
-                logger.warning("LLM response missing scores, using defaults")
+                logger.warning(f"LLM response missing scores field. Keys present: {list(result.keys())}")
+                logger.debug(f"Full LLM result: {result}")
                 return self._default_evaluation(criteria)
 
+            # Validate scores are not empty
+            if len(result["scores"]) == 0:
+                logger.warning("LLM returned empty scores array")
+                return self._default_evaluation(criteria)
+
+            logger.info(f"LLM evaluation successful: {len(result['scores'])} criteria scored")
             return result
 
         except Exception as e:
-            logger.error(f"LLM evaluation failed: {e}")
+            logger.error(f"LLM evaluation failed: {e}", exc_info=True)
             return self._default_evaluation(criteria)
 
     def generate_explanation(

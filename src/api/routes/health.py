@@ -113,3 +113,65 @@ def initialize_llm():
             "status": "error",
             "message": str(e),
         }), 500
+
+
+@health_bp.route("/api/llm/test", methods=["POST"])
+def test_llm_evaluation():
+    """Test LLM evaluation with sample data.
+
+    Returns:
+        JSON response with test evaluation results
+    """
+    try:
+        from src.services.llm_service import LLMService
+
+        llm = LLMService.get_instance()
+
+        # Sample candidate text
+        sample_text = """
+        John Doe
+        Bachelor's degree in Computer Science
+        5 years of experience in software development
+        Skills: Python, JavaScript, React, MongoDB
+        Led team of 3 developers on major project
+        Excellent written and verbal communication
+        """
+
+        # Sample job requirements
+        sample_job = {
+            "qualifications": [
+                "Bachelor's degree in relevant field",
+                "3+ years experience",
+                "Strong programming skills"
+            ],
+            "responsibilities": [
+                "Develop software applications",
+                "Lead development projects"
+            ]
+        }
+
+        # Sample criteria
+        sample_criteria = [
+            {"key": "education", "name": "Education", "weight": 0.2, "description": "Degree level"},
+            {"key": "experience", "name": "Experience", "weight": 0.3, "description": "Years of work"},
+            {"key": "technical_skills", "name": "Technical Skills", "weight": 0.3, "description": "Programming skills"},
+            {"key": "leadership", "name": "Leadership", "weight": 0.2, "description": "Team management"}
+        ]
+
+        # Run evaluation
+        result = llm.evaluate_candidate(sample_text, sample_job, sample_criteria)
+
+        return jsonify({
+            "status": "success",
+            "message": "LLM test evaluation completed",
+            "result": result,
+            "scores_count": len(result.get("scores", [])),
+            "has_strengths": len(result.get("strengths", [])) > 0,
+            "has_concerns": len(result.get("concerns", [])) > 0,
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+        }), 500

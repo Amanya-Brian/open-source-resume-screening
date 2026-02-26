@@ -536,3 +536,52 @@ def get_screening_results(job_id: str):
             "error": "Failed to get results",
             "message": str(e),
         }), 500
+
+
+@data_sync_bp.route("/data/jobs/<job_id>/fairness", methods=["GET"])
+def get_fairness_report(job_id: str):
+    """Get fairness report for a job screening.
+
+    Args:
+        job_id: Job listing ID
+
+    Returns:
+        JSON response with fairness analysis
+    """
+    try:
+        mongo = get_mongo_service()
+        run_async(mongo.connect())
+
+        # Get fairness report
+        report = run_async(mongo.find_one("fairness_reports", {"job_id": job_id}))
+
+        if not report:
+            return jsonify({
+                "success": False,
+                "message": "No fairness report found. Run screening first.",
+                "job_id": job_id,
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "job_id": job_id,
+            "fairness_report": {
+                "is_compliant": report.get("is_compliant"),
+                "metrics": {
+                    "disparate_impact_ratio": report.get("metrics", {}).get("disparate_impact_ratio"),
+                    "demographic_parity": report.get("metrics", {}).get("demographic_parity"),
+                    "equal_opportunity": report.get("metrics", {}).get("equal_opportunity"),
+                    "attribute_variance": report.get("metrics", {}).get("attribute_variance", {}),
+                },
+                "violations": report.get("violations", []),
+                "recommendations": report.get("recommendations", []),
+                "created_at": report.get("created_at"),
+            },
+        })
+
+    except Exception as e:
+        logger.error(f"Get fairness report failed: {e}")
+        return jsonify({
+            "error": "Failed to get fairness report",
+            "message": str(e),
+        }), 500
