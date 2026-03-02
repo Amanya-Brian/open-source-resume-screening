@@ -25,7 +25,7 @@ class LLMService:
         """
         self.settings = settings or get_settings()
         self.ollama_url = "http://localhost:11434"
-        self.model_name = getattr(self.settings, 'ollama_model', 'llama3:latest')
+        self.model_name = getattr(self.settings, 'ollama_model', 'phi3')
         self._initialized = False
         self._available_models = []
 
@@ -108,7 +108,7 @@ class LLMService:
                         "num_predict": max_tokens,
                     },
                 },
-                timeout=120,
+                timeout=180,
             )
             response.raise_for_status()
 
@@ -135,85 +135,88 @@ class LLMService:
         Returns:
             Dictionary with scores and evidence for each criterion
         """
-        system_prompt = """You are an expert HR recruiter evaluating job candidates.
-Analyze the candidate's qualifications against the job requirements and score each criterion.
-Use a 0-5 scale where:
-- 5: Exceeds requirements significantly
-- 4: Exceeds requirements
-- 3: Meets requirements
-- 2: Partially meets requirements
-- 1: Does not meet requirements
-- 0: No evidence/Not applicable
+        # Build the exact criterion keys for the prompt
+        criteria_keys = [c["key"] for c in criteria]
+        criteria_keys_str = ", ".join([f'"{k}"' for k in criteria_keys])
 
-You MUST respond with ONLY valid JSON in this exact format, no other text:
-{
-  "scores": [
-    {"criterion": "education", "score": 3, "evidence": "Has Bachelor's degree in relevant field"},
-    {"criterion": "experience", "score": 4, "evidence": "5+ years in similar role"},
-    {"criterion": "technical_skills", "score": 3, "evidence": "Proficient in required tools"},
-    {"criterion": "industry_knowledge", "score": 2, "evidence": "Some exposure to industry"},
-    {"criterion": "leadership", "score": 3, "evidence": "Led small team projects"},
-    {"criterion": "communication", "score": 4, "evidence": "Well-written application"}
-  ],
-  "strengths": ["Strong technical background", "Relevant experience"],
-  "concerns": ["Limited leadership experience"]
-}"""
+        system_prompt = f"""You are an expert HR recruiter evaluating job candidates.
+Score each criterion on a 0-5 scale:
+  5 = Exceeds significantly (exceptional match, strong evidence)
+  4 = Exceeds (above requirements, clear evidence)
+  3 = Meets requirements (solid match)
+  2 = Partially meets (some evidence but gaps)
+  1 = Does not meet (weak or no relevant evidence)
+  0 = Not applicable
+
+IMPORTANT:
+- Keep evidence BRIEF (max 20 words per criterion)
+- Give VARIED scores - do NOT score everything the same
+- Use these exact criterion keys: [{criteria_keys_str}]
+
+Respond with ONLY valid JSON in this format:
+{{"scores": [{{"criterion": "{criteria_keys[0]}", "score": 3, "evidence": "Brief evidence"}}, {{"criterion": "{criteria_keys[1]}", "score": 4, "evidence": "Brief evidence"}}], "strengths": ["Brief strength"], "concerns": ["Brief concern"]}}"""
 
         # Format criteria for prompt
         criteria_text = "\n".join([
-            f"- {c['name']} ({int(c['weight']*100)}% weight): {c.get('description', '')}"
+            f"- {c['key']} ({c['name']}, {int(c['weight']*100)}% weight): {c.get('description', 'Evaluate based on evidence')}"
             for c in criteria
         ])
 
         # Format job requirements
         quals = job_requirements.get("qualifications", [])
         resps = job_requirements.get("responsibilities", [])
-        job_text = "QUALIFICATIONS:\n" + "\n".join([f"- {q}" for q in quals[:5]])
+        job_text = ""
+        if quals:
+            job_text += "REQUIRED QUALIFICATIONS:\n" + "\n".join([f"- {q}" for q in quals[:8]])
         if resps:
-            job_text += "\n\nRESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:5]])
+            job_text += "\n\nKEY RESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:8]])
 
-        # Truncate candidate text if too long
-        max_candidate_len = 2500
+        # Keep more candidate context
+        max_candidate_len = 3000
         if len(candidate_text) > max_candidate_len:
             candidate_text = candidate_text[:max_candidate_len] + "..."
 
-        prompt = f"""Evaluate this candidate for the job position.
+        prompt = f"""Evaluate this candidate for the job.
 
 {job_text}
 
-EVALUATION CRITERIA (score each 0-5):
+EVALUATION CRITERIA (score EACH one 0-5 with specific evidence):
 {criteria_text}
 
-CANDIDATE'S APPLICATION:
+CANDIDATE'S APPLICATION TEXT:
+---
 {candidate_text}
+---
 
-Respond with ONLY the JSON evaluation, no explanations:"""
+Score each criterion. Be specific about what you found or didn't find.
+Respond with ONLY the JSON:"""
 
         try:
-            # Check if Ollama is available first
+            # Check if Ollama is available
             if not self.is_available():
                 logger.error("Ollama is not running! Start with: ollama serve")
                 return self._default_evaluation(criteria)
 
-            response = self.generate(prompt, system_prompt=system_prompt, max_tokens=600)
+            # Use higher max_tokens to prevent truncation
+            response = self.generate(prompt, system_prompt=system_prompt, max_tokens=2000)
 
-            # Log raw response for debugging
-            logger.debug(f"LLM raw response (first 500 chars): {response[:500]}")
+            logger.info(f"LLM response length: {len(response)} chars")
+            logger.debug(f"LLM raw response: {response[:600]}")
 
             result = self._parse_json_response(response)
 
-            # Validate result has scores
             if not result.get("scores"):
-                logger.warning(f"LLM response missing scores field. Keys present: {list(result.keys())}")
-                logger.debug(f"Full LLM result: {result}")
+                logger.warning(f"LLM missing 'scores'. Keys: {list(result.keys())}. Raw: {response[:300]}")
                 return self._default_evaluation(criteria)
 
-            # Validate scores are not empty
             if len(result["scores"]) == 0:
                 logger.warning("LLM returned empty scores array")
                 return self._default_evaluation(criteria)
 
-            logger.info(f"LLM evaluation successful: {len(result['scores'])} criteria scored")
+            # Log each score
+            for s in result["scores"]:
+                logger.info(f"  LLM: {s.get('criterion')}={s.get('score')} | {str(s.get('evidence', ''))[:80]}")
+
             return result
 
         except Exception as e:
@@ -243,30 +246,38 @@ Respond with ONLY the JSON evaluation, no explanations:"""
             Dictionary with summary, strengths, and concerns
         """
         system_prompt = """You are an HR professional writing candidate evaluation summaries.
-Write clear, professional, and constructive feedback.
-Respond with ONLY valid JSON, no other text:
-{
-  "summary": "2-3 sentence professional summary of the candidate",
-  "strengths": ["key strength 1", "key strength 2"],
-  "concerns": ["area of concern 1"],
-  "interview_questions": ["suggested interview question"]
-}"""
+Write clear, professional, and constructive feedback that helps hiring managers make decisions.
 
-        # Format scores
+IMPORTANT:
+- "summary" should be 2-3 sentences explaining WHY this candidate is/isn't a good fit
+- "strengths" should be 2-4 SPECIFIC strengths with evidence (not generic)
+- "concerns" should be 1-3 SPECIFIC gaps or risks with what's missing
+- "interview_questions" should be 1-2 questions to probe the concerns
+
+Respond with ONLY valid JSON:
+{"summary": "...", "strengths": ["..."], "concerns": ["..."], "interview_questions": ["..."]}"""
+
+        # Format scores with more detail
         scores_text = "\n".join([
-            f"- {s.get('criterion_name', s.get('criterion'))}: {s.get('raw_score', s.get('score'))}/5 ({s.get('evidence', '')})"
+            f"- {s.get('criterion_name', s.get('criterion'))}: {s.get('raw_score', s.get('score'))}/5 - {s.get('evidence', 'No evidence')}"
             for s in scores
         ])
 
-        prompt = f"""Write an evaluation summary for:
+        prompt = f"""Write a detailed evaluation summary for this candidate.
 
 Candidate: {candidate_name}
 Position: {job_title}
 Overall Score: {total_score:.2f}/5.0 ({percentage:.1f}%)
 Recommendation: {recommendation}
 
-Scores:
+Detailed Scores:
 {scores_text}
+
+Based on these scores, write:
+1. A professional summary explaining the candidate's fit for this specific role
+2. Their key strengths (be specific, reference the evidence above)
+3. Areas of concern (be specific about what's missing or weak)
+4. Interview questions to address the gaps
 
 Respond with ONLY JSON:"""
 
@@ -289,7 +300,7 @@ Respond with ONLY JSON:"""
             }
 
     def _parse_json_response(self, response: str) -> dict[str, Any]:
-        """Parse JSON from LLM response.
+        """Parse JSON from LLM response, handling common LLM output issues.
 
         Args:
             response: Raw LLM response
@@ -299,14 +310,35 @@ Respond with ONLY JSON:"""
         """
         response = response.strip()
 
+        # Fix common LLM JSON issues before parsing
+        def clean_json(text: str) -> str:
+            """Clean common issues in LLM-generated JSON."""
+            # Replace smart quotes with regular quotes
+            text = text.replace("\u2018", "'").replace("\u2019", "'")
+            text = text.replace("\u201c", '"').replace("\u201d", '"')
+            # Replace curly apostrophes
+            text = text.replace("\u2032", "'").replace("\u2035", "'")
+            # Fix escaped single quotes inside double-quoted strings
+            # Remove trailing commas before closing brackets
+            text = re.sub(r',\s*}', '}', text)
+            text = re.sub(r',\s*]', ']', text)
+            return text
+
         # Try direct parsing
         try:
             return json.loads(response)
         except json.JSONDecodeError:
             pass
 
+        # Try with cleaned text
+        cleaned = clean_json(response)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+
         # Try to extract JSON from markdown code blocks
-        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", response)
+        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", cleaned)
         if json_match:
             try:
                 return json.loads(json_match.group(1).strip())
@@ -314,25 +346,91 @@ Respond with ONLY JSON:"""
                 pass
 
         # Try to find JSON object in text
-        json_match = re.search(r"\{[\s\S]*\}", response)
+        json_match = re.search(r"\{[\s\S]*\}", cleaned)
         if json_match:
+            extracted = json_match.group(0)
             try:
-                return json.loads(json_match.group(0))
+                return json.loads(extracted)
+            except json.JSONDecodeError:
+                # Last resort: try to fix unescaped quotes in evidence strings
+                # Replace single quotes with escaped single quotes in values
+                try:
+                    fixed = re.sub(r"(?<=: \")([^\"]*?)(?=\"[,}\]])", lambda m: m.group(1).replace("'", "\\'"), extracted)
+                    return json.loads(fixed)
+                except (json.JSONDecodeError, Exception):
+                    pass
+
+        # Try to repair truncated JSON (common when max_tokens cuts off the response)
+        repaired = self._repair_truncated_json(cleaned)
+        if repaired:
+            try:
+                return json.loads(repaired)
             except json.JSONDecodeError:
                 pass
 
-        logger.warning(f"Failed to parse JSON from response: {response[:200]}")
+        logger.warning(f"Failed to parse JSON from response: {response[:300]}")
         return {}
 
+    def _repair_truncated_json(self, text: str) -> Optional[str]:
+        """Attempt to repair truncated JSON by extracting complete score entries.
+
+        When LLM output is cut off mid-response, we can still salvage the
+        score entries that were fully written before truncation.
+
+        Args:
+            text: Potentially truncated JSON string
+
+        Returns:
+            Repaired JSON string or None if repair is not possible
+        """
+        try:
+            # Find all complete score entries using regex
+            score_pattern = r'\{\s*"criterion"\s*:\s*"([^"]+)"\s*,\s*"score"\s*:\s*(\d+)\s*,\s*"evidence"\s*:\s*"([^"]*?)"\s*\}'
+            matches = re.findall(score_pattern, text)
+
+            if not matches:
+                return None
+
+            scores = []
+            for criterion, score, evidence in matches:
+                scores.append({
+                    "criterion": criterion,
+                    "score": int(score),
+                    "evidence": evidence[:100],  # Truncate long evidence
+                })
+
+            # Try to extract strengths and concerns
+            strengths = []
+            concerns = []
+
+            strengths_match = re.search(r'"strengths"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if strengths_match:
+                strengths = re.findall(r'"([^"]+)"', strengths_match.group(1))
+
+            concerns_match = re.search(r'"concerns"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if concerns_match:
+                concerns = re.findall(r'"([^"]+)"', concerns_match.group(1))
+
+            result = {
+                "scores": scores,
+                "strengths": strengths[:5],
+                "concerns": concerns[:5],
+            }
+
+            logger.info(f"Repaired truncated JSON: extracted {len(scores)} scores")
+            return json.dumps(result)
+
+        except Exception as e:
+            logger.debug(f"JSON repair failed: {e}")
+            return None
+
     def _default_evaluation(self, criteria: list[dict[str, Any]]) -> dict[str, Any]:
-        """Return default evaluation when LLM fails."""
+        """Return empty evaluation to signal LLM failure (triggers rule-based fallback)."""
+        logger.warning("LLM evaluation failed - returning empty scores to trigger rule-based fallback")
         return {
-            "scores": [
-                {"criterion": c["key"], "score": 2, "evidence": "Evaluation unavailable"}
-                for c in criteria
-            ],
+            "scores": [],
             "strengths": [],
-            "concerns": ["Automated evaluation unavailable"],
+            "concerns": [],
         }
 
     def is_available(self) -> bool:

@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from src.agents.fairness_agent import FairnessAgent, FairnessInput
 from src.agents.base import AgentContext
-from src.models.schemas import RankedCandidate, ScreeningScore, Student, FairnessReport
+from src.models.schemas import ComponentScore, RankedCandidate, ScreeningScore, Student, FairnessReport
 from src.models.scoring import (
     CandidateEvaluation,
     CriterionScore,
@@ -146,65 +146,76 @@ class ScreeningService:
         )
 
         # Try LLM-based evaluation if enabled
+        llm_succeeded = False
         if self.use_llm and full_text:
             try:
                 criteria_scores, strengths, concerns = await self._evaluate_with_llm(
                     full_text, qualifications, responsibilities
                 )
-                if criteria_scores:
+                # Check if LLM actually scored (not all zeros from failed matching)
+                if criteria_scores and any(cs.raw_score > 0 for cs in criteria_scores):
                     evaluation.criteria_scores = criteria_scores
                     evaluation.calculate_totals()
 
-                    # Generate LLM explanation
-                    llm_explanation = await self._generate_llm_explanation(
-                        candidate_name, job_title, criteria_scores,
-                        evaluation.total_weighted_score, evaluation.percentage,
-                        evaluation.recommendation
+                    # Use strengths/concerns from the LLM evaluation directly
+                    # (skip the separate explanation call to save time)
+                    evaluation.strengths = strengths if strengths else self._extract_strengths(criteria_scores, full_text)
+                    evaluation.concerns = concerns if concerns else self._extract_concerns(criteria_scores, qualifications)
+
+                    # Build summary from the scores themselves
+                    evaluation.detailed_notes = (
+                        f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title}. "
+                        f"Recommendation: {evaluation.recommendation}."
                     )
 
-                    evaluation.strengths = llm_explanation.get("strengths", strengths)
-                    evaluation.concerns = llm_explanation.get("concerns", concerns)
-                    evaluation.detailed_notes = llm_explanation.get("summary", "")
-
-                    return evaluation
+                    llm_succeeded = True
+                    logger.info(f"LLM evaluation for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
+                else:
+                    logger.warning(f"LLM returned empty/zero scores for {candidate_name}, using rule-based")
             except Exception as e:
-                logger.warning(f"LLM evaluation failed, falling back to rule-based: {e}")
+                logger.warning(f"LLM evaluation failed for {candidate_name}, falling back to rule-based: {e}")
 
-        # Fallback to rule-based evaluation
-        criteria_scores = []
+        # Fallback to rule-based evaluation (always runs if LLM failed)
+        if not llm_succeeded:
+            criteria_scores = []
 
-        # 1. Education & Qualifications
-        edu_score = self._score_education(full_text, qualifications)
-        criteria_scores.append(edu_score)
+            # 1. Education & Qualifications
+            edu_score = self._score_education(full_text, qualifications)
+            criteria_scores.append(edu_score)
 
-        # 2. Relevant Experience
-        exp_score = self._score_experience(full_text, qualifications)
-        criteria_scores.append(exp_score)
+            # 2. Relevant Experience
+            exp_score = self._score_experience(full_text, qualifications)
+            criteria_scores.append(exp_score)
 
-        # 3. Technical Skills
-        tech_score = self._score_technical_skills(full_text, qualifications)
-        criteria_scores.append(tech_score)
+            # 3. Technical Skills
+            tech_score = self._score_technical_skills(full_text, qualifications)
+            criteria_scores.append(tech_score)
 
-        # 4. Industry Knowledge
-        industry_score = self._score_industry_knowledge(full_text, job_title, responsibilities)
-        criteria_scores.append(industry_score)
+            # 4. Industry Knowledge
+            industry_score = self._score_industry_knowledge(full_text, job_title, responsibilities)
+            criteria_scores.append(industry_score)
 
-        # 5. Leadership Experience
-        leadership_score = self._score_leadership(full_text)
-        criteria_scores.append(leadership_score)
+            # 5. Leadership Experience
+            leadership_score = self._score_leadership(full_text)
+            criteria_scores.append(leadership_score)
 
-        # 6. Communication Skills
-        comm_score = self._score_communication(cover_letter)
-        criteria_scores.append(comm_score)
+            # 6. Communication Skills
+            comm_score = self._score_communication(cover_letter)
+            criteria_scores.append(comm_score)
 
-        evaluation.criteria_scores = criteria_scores
+            evaluation.criteria_scores = criteria_scores
+            evaluation.calculate_totals()
 
-        # Calculate totals
-        evaluation.calculate_totals()
+            # Extract detailed strengths and concerns
+            evaluation.strengths = self._extract_strengths(criteria_scores, full_text)
+            evaluation.concerns = self._extract_concerns(criteria_scores, qualifications)
 
-        # Extract strengths and concerns
-        evaluation.strengths = self._extract_strengths(criteria_scores, full_text)
-        evaluation.concerns = self._extract_concerns(criteria_scores, qualifications)
+            evaluation.detailed_notes = (
+                f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title} "
+                f"(rule-based evaluation). Recommendation: {evaluation.recommendation}."
+            )
+
+            logger.info(f"Rule-based evaluation for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
 
         return evaluation
 
@@ -249,46 +260,52 @@ class ScreeningService:
         # Parse LLM response into CriterionScore objects
         criteria_scores = []
         llm_scores = result.get("scores", [])
+        matched_count = 0
 
-        # DEBUG: Log what LLM returned
-        logger.info(f"LLM returned {len(llm_scores)} scores")
-        if llm_scores:
-            logger.debug(f"LLM scores: {llm_scores}")
+        # Pre-normalize all LLM score criterion names for matching
+        normalized_llm = {}
+        for s in llm_scores:
+            raw_name = s.get("criterion", "")
+            norm_key = raw_name.lower().strip().replace(" ", "_").replace("-", "_").replace("&", "and")
+            normalized_llm[norm_key] = s
+            # Also store by raw name for exact match
+            normalized_llm[raw_name.lower().strip()] = s
 
         for criterion in DefaultCriteria.get_all():
-            # Find matching score from LLM - try multiple matching strategies
+            # Try multiple matching strategies
             llm_score = None
+            norm_crit = criterion.key.lower()
 
             # Strategy 1: Exact key match
-            llm_score = next(
-                (s for s in llm_scores if s.get("criterion") == criterion.key),
-                None
-            )
+            llm_score = normalized_llm.get(norm_crit)
 
-            # Strategy 2: Exact name match
+            # Strategy 2: Normalized name match
             if not llm_score:
-                llm_score = next(
-                    (s for s in llm_scores if s.get("criterion") == criterion.name.lower()),
-                    None
-                )
+                norm_name = criterion.name.lower().replace(" ", "_").replace("&", "and")
+                llm_score = normalized_llm.get(norm_name)
 
-            # Strategy 3: Fuzzy name match (e.g., "technical_skills" matches "technical skills")
+            # Strategy 3: Partial key match (e.g., "technical" matches "technical_skills")
             if not llm_score:
-                criterion_normalized = criterion.key.replace("_", " ")
-                llm_score = next(
-                    (s for s in llm_scores
-                     if s.get("criterion", "").lower().replace("_", " ") == criterion_normalized),
-                    None
-                )
+                for llm_key, s in normalized_llm.items():
+                    if norm_crit in llm_key or llm_key in norm_crit:
+                        llm_score = s
+                        break
+
+            # Strategy 4: Match by position in the list (if same count)
+            if not llm_score and len(llm_scores) == len(DefaultCriteria.get_all()):
+                idx = list(DefaultCriteria.get_all()).index(criterion)
+                if idx < len(llm_scores):
+                    llm_score = llm_scores[idx]
+                    logger.debug(f"Matched {criterion.key} by position [{idx}]")
 
             if llm_score:
-                score = min(5, max(0, int(llm_score.get("score", 2))))
+                score = min(5, max(0, int(float(llm_score.get("score", 0)))))
                 evidence = llm_score.get("evidence", "LLM evaluation")
-                logger.debug(f"Matched {criterion.key}: score={score}")
+                matched_count += 1
             else:
-                score = 2  # Default if not found
-                evidence = "No specific evaluation provided"
-                logger.warning(f"No LLM score found for {criterion.key}, defaulting to 2")
+                score = 0
+                evidence = "Not evaluated - criterion not matched in LLM response"
+                logger.warning(f"No LLM score for '{criterion.key}'. Available: {list(normalized_llm.keys())}")
 
             criteria_scores.append(CriterionScore(
                 criterion_key=criterion.key,
@@ -297,6 +314,8 @@ class ScreeningService:
                 raw_score=score,
                 evidence=evidence,
             ))
+
+        logger.info(f"LLM criterion matching: {matched_count}/{len(DefaultCriteria.get_all())} matched")
 
         strengths = result.get("strengths", [])
         concerns = result.get("concerns", [])
@@ -675,42 +694,102 @@ class ScreeningService:
         scores: list[CriterionScore],
         text: str,
     ) -> list[str]:
-        """Extract candidate strengths."""
+        """Extract detailed candidate strengths based on scores and text."""
         strengths = []
 
-        for score in scores:
-            if score.raw_score >= 4:
-                strengths.append(f"{score.criterion_name}: {score.evidence}")
+        # Sort scores descending - strongest areas first
+        sorted_scores = sorted(scores, key=lambda s: s.raw_score, reverse=True)
 
-        # Add any additional strengths from text analysis
+        for score in sorted_scores:
+            if score.raw_score >= 4:
+                strengths.append(
+                    f"Strong {score.criterion_name} (scored {score.raw_score}/5): {score.evidence}"
+                )
+            elif score.raw_score == 3 and len(strengths) < 2:
+                # Include "meets" scores if we don't have enough strengths yet
+                strengths.append(
+                    f"Meets {score.criterion_name} requirements (scored {score.raw_score}/5): {score.evidence}"
+                )
+
+        # Text-based strengths
         text_lower = text.lower()
 
+        if re.search(r'\d+\+?\s*years?', text_lower):
+            years_match = re.search(r'(\d+)\+?\s*years?', text_lower)
+            if years_match:
+                strengths.append(f"Has {years_match.group(1)}+ years of professional experience")
+
         if "track record" in text_lower or "successfully" in text_lower:
-            strengths.append("Demonstrates track record of success")
+            strengths.append("Demonstrates a track record of successful outcomes")
 
-        if "award" in text_lower or "recognized" in text_lower:
-            strengths.append("Has received awards/recognition")
+        if "award" in text_lower or "recognized" in text_lower or "honour" in text_lower:
+            strengths.append("Has received professional awards or recognition")
 
-        return strengths[:5]  # Limit to top 5
+        if re.search(r'team\s*of\s*\d+', text_lower):
+            team_match = re.search(r'team\s*of\s*(\d+)', text_lower)
+            if team_match:
+                strengths.append(f"Experience leading a team of {team_match.group(1)} people")
+
+        # Ensure at least one strength
+        if not strengths:
+            best = sorted_scores[0] if sorted_scores else None
+            if best:
+                strengths.append(f"Strongest area is {best.criterion_name} (scored {best.raw_score}/5): {best.evidence}")
+
+        return strengths[:5]
 
     def _extract_concerns(
         self,
         scores: list[CriterionScore],
         qualifications: list[str],
     ) -> list[str]:
-        """Extract concerns about the candidate."""
+        """Extract detailed concerns about the candidate."""
         concerns = []
 
-        for score in scores:
-            if score.raw_score <= 2:
-                concerns.append(f"{score.criterion_name}: {score.evidence}")
+        # Sort scores ascending - weakest areas first
+        sorted_scores = sorted(scores, key=lambda s: s.raw_score)
 
-        # Check for gaps
+        for score in sorted_scores:
+            if score.raw_score <= 1:
+                concerns.append(
+                    f"Weak {score.criterion_name} (scored {score.raw_score}/5): {score.evidence}. "
+                    f"This criterion carries {int(score.weight * 100)}% weight."
+                )
+            elif score.raw_score == 2:
+                concerns.append(
+                    f"Below requirements in {score.criterion_name} (scored {score.raw_score}/5): {score.evidence}"
+                )
+
+        # Qualification gaps
+        if qualifications:
+            concern_quals = []
+            for qual in qualifications[:5]:
+                qual_lower = qual.lower()
+                # Check if any key terms from the qualification appear in scores evidence
+                found = False
+                for score in scores:
+                    if any(word in score.evidence.lower() for word in qual_lower.split()[:3] if len(word) > 3):
+                        found = True
+                        break
+                if not found:
+                    concern_quals.append(qual)
+            if concern_quals:
+                concerns.append(f"May not meet these qualifications: {'; '.join(concern_quals[:2])}")
+
+        # Overall assessment
         low_scores = [s for s in scores if s.raw_score <= 2]
-        if len(low_scores) >= 3:
-            concerns.append("Multiple areas below requirements")
+        high_weight_low = [s for s in low_scores if s.weight >= 0.2]
+        if high_weight_low:
+            names = [s.criterion_name for s in high_weight_low]
+            concerns.append(f"Underperforms in high-weight areas: {', '.join(names)}")
 
-        return concerns[:5]  # Limit to top 5
+        # Ensure at least one concern
+        if not concerns:
+            weakest = sorted_scores[0] if sorted_scores else None
+            if weakest:
+                concerns.append(f"Weakest area is {weakest.criterion_name} (scored {weakest.raw_score}/5): {weakest.evidence}")
+
+        return concerns[:5]
 
     async def _run_fairness_analysis(
         self,
@@ -731,46 +810,60 @@ class ScreeningService:
         try:
             logger.info(f"Running fairness analysis for job {job_id}...")
 
-            # Convert evaluations to RankedCandidate format
-            ranked_candidates = [
-                RankedCandidate(
+            # Build ScreeningScore objects for each evaluation
+            scores = {}
+            for eval in evaluations:
+                # Normalize total_weighted_score (0-5 scale) to 0-1 scale
+                normalized_overall = min(1.0, eval.total_weighted_score / 5.0)
+
+                # Convert criteria scores to ComponentScore objects
+                component_scores = [
+                    ComponentScore(
+                        name=cs.criterion_name,
+                        score=min(1.0, cs.raw_score / 5.0),
+                        weight=cs.weight,
+                        weighted_score=min(1.0, cs.weighted_score / 5.0),
+                        details=cs.evidence,
+                    )
+                    for cs in eval.criteria_scores
+                ]
+
+                scores[eval.candidate_id] = ScreeningScore(
                     candidate_id=eval.candidate_id,
-                    rank=idx + 1,
-                    overall_score=eval.total_weighted_score,
-                    percentile=100 * (len(evaluations) - idx) / len(evaluations),
-                    recommendation=eval.recommendation,
+                    job_id=job_id,
+                    overall_score=normalized_overall,
+                    component_scores=component_scores,
                 )
-                for idx, eval in enumerate(evaluations)
-            ]
+
+            # Convert evaluations to RankedCandidate format
+            ranked_candidates = []
+            for idx, eval in enumerate(evaluations):
+                normalized_score = min(1.0, eval.total_weighted_score / 5.0)
+                ranked_candidates.append(
+                    RankedCandidate(
+                        candidate_id=eval.candidate_id,
+                        rank=idx + 1,
+                        score=normalized_score,
+                        percentile=100 * (len(evaluations) - idx) / len(evaluations),
+                        screening_score=scores[eval.candidate_id],
+                        recommendation=eval.recommendation,
+                    )
+                )
 
             # Convert applications to Student format
             students = []
             for app in applications:
                 student = Student(
-                    id=app.get("student_id", ""),
-                    firstname=app.get("student_firstname", ""),
-                    lastname=app.get("student_lastname", ""),
+                    _id=app.get("student_id", ""),
+                    first_name=app.get("student_firstname", "Unknown"),
+                    last_name=app.get("student_lastname", "Unknown"),
                     email=app.get("student_email", ""),
-                    # Extract demographic info (if available)
                     gender=app.get("gender"),
                     age_group=app.get("age_group"),
                     ethnicity=app.get("ethnicity"),
                     nationality=app.get("nationality"),
                 )
                 students.append(student)
-
-            # Convert evaluations to ScreeningScore format
-            scores = {
-                eval.candidate_id: ScreeningScore(
-                    candidate_id=eval.candidate_id,
-                    overall_score=eval.total_weighted_score,
-                    component_scores={
-                        cs.criterion_key: cs.raw_score
-                        for cs in eval.criteria_scores
-                    },
-                )
-                for eval in evaluations
-            }
 
             # Create FairnessAgent and run analysis
             fairness_agent = FairnessAgent()
@@ -781,11 +874,11 @@ class ScreeningService:
                 job_id=job_id,
             )
 
-            context = AgentContext(session_id=f"screening-{job_id}")
+            context = AgentContext(job_id=job_id, session_id=f"screening-{job_id}")
             result = await fairness_agent.execute(fairness_input, context)
 
-            if result.success and result.output:
-                fairness_report = result.output.fairness_report
+            if result.success and result.data:
+                fairness_report = result.data.fairness_report
 
                 # Log fairness results
                 logger.info(
@@ -862,7 +955,7 @@ class ScreeningService:
                 },
                 "violations": fairness_report.violations,
                 "recommendations": fairness_report.recommendations,
-                "created_at": fairness_report.created_at.isoformat() if fairness_report.created_at else None,
+                "generated_at": fairness_report.generated_at.isoformat() if fairness_report.generated_at else None,
             }
 
             await self.mongo.update_one(
