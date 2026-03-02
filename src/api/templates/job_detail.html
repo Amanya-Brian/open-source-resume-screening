@@ -169,6 +169,24 @@
         </div>
     </div>
 </div>
+
+<!-- Fairness Report -->
+<div class="card mt-4" id="fairnessReport">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>Fairness Analysis</h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadFairnessReport('{{ job.id }}')">
+            <i class="bi bi-arrow-repeat me-1"></i> Refresh
+        </button>
+    </div>
+    <div class="card-body" id="fairnessContent">
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mt-2">Loading fairness analysis...</p>
+        </div>
+    </div>
+</div>
 {% else %}
 <!-- Applications List (No Screening Yet) -->
 <div class="card">
@@ -300,5 +318,121 @@ async function syncApplications(jobId) {
         `;
     }
 }
+
+async function loadFairnessReport(jobId) {
+    const content = document.getElementById('fairnessContent');
+    content.innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="text-muted mt-2">Loading fairness analysis...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch(`/api/data/jobs/${jobId}/fairness`);
+        const data = await response.json();
+
+        if (data.success && data.fairness_report) {
+            const report = data.fairness_report;
+            const metrics = report.metrics;
+            const isCompliant = report.is_compliant;
+            const dir = metrics.disparate_impact_ratio;
+
+            content.innerHTML = `
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <div class="card border-${isCompliant ? 'success' : 'danger'} h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-${isCompliant ? 'check-circle-fill text-success' : 'exclamation-triangle-fill text-danger'}" style="font-size: 2.5rem;"></i>
+                                <h6 class="mt-2 mb-1">Compliance Status</h6>
+                                <p class="mb-0 fw-bold ${isCompliant ? 'text-success' : 'text-danger'}">
+                                    ${isCompliant ? 'COMPLIANT' : 'VIOLATIONS DETECTED'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-${dir >= 0.8 ? 'success' : 'warning'} h-100">
+                            <div class="card-body text-center">
+                                <h1 class="mb-0 fw-bold">${dir ? dir.toFixed(3) : 'N/A'}</h1>
+                                <h6 class="mt-2 mb-1">Disparate Impact Ratio</h6>
+                                <small class="text-muted">Target: ≥ 0.8 (Four-Fifths Rule)</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-info h-100">
+                            <div class="card-body text-center">
+                                <h1 class="mb-0 fw-bold">${metrics.demographic_parity ? (metrics.demographic_parity * 100).toFixed(1) : 'N/A'}%</h1>
+                                <h6 class="mt-2 mb-1">Demographic Parity</h6>
+                                <small class="text-muted">Equal selection rates</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                ${report.violations && report.violations.length > 0 ? `
+                    <div class="alert alert-danger">
+                        <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Fairness Violations</h6>
+                        <ul class="mb-0">
+                            ${report.violations.map(v => `<li>${v}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+
+                ${report.recommendations && report.recommendations.length > 0 ? `
+                    <div class="alert alert-info">
+                        <h6 class="alert-heading"><i class="bi bi-lightbulb me-2"></i>Recommendations</h6>
+                        <ul class="mb-0">
+                            ${report.recommendations.map(r => `<li>${r}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+
+                ${metrics.attribute_variance && Object.keys(metrics.attribute_variance).length > 0 ? `
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="mb-3"><i class="bi bi-graph-up me-2"></i>Attribute Variance (Counterfactual Analysis)</h6>
+                            <div class="row g-2">
+                                ${Object.entries(metrics.attribute_variance).map(([attr, variance]) => `
+                                    <div class="col-md-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="text-capitalize">${attr.replace('_', ' ')}</span>
+                                            <span class="badge ${variance === 0 ? 'bg-success' : variance < 0.01 ? 'bg-warning' : 'bg-danger'}">
+                                                ${(variance * 100).toFixed(3)}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <small class="text-muted d-block mt-2">Target: 0% variance (protected attributes should not affect ranking)</small>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        } else {
+            content.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="bi bi-info-circle text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-3">${data.message || 'No fairness report available. Run screening first.'}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-x-circle me-2"></i>
+                Error loading fairness report: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// Auto-load fairness report if results exist
+{% if results %}
+document.addEventListener('DOMContentLoaded', function() {
+    loadFairnessReport('{{ job.id }}');
+});
+{% endif %}
 </script>
 {% endblock %}
