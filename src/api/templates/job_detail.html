@@ -34,15 +34,24 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="col-md-4 text-end">
+            <div class="col-md-4 text-end d-flex flex-column align-items-stretch gap-2">
                 {% if not results %}
-                <button class="btn btn-screen btn-lg" onclick="runScreening('{{ job.id }}')">
+                <button class="btn btn-screen btn-lg w-100" onclick="runScreening('{{ job.id }}')">
                     <span class="loading-spinner spinner-border spinner-border-sm me-2"></span>
                     <i class="bi bi-play-fill me-1"></i> Run Screening
                 </button>
                 {% else %}
-                <button class="btn btn-outline-primary btn-lg" onclick="runScreening('{{ job.id }}')">
+                <button class="btn btn-outline-primary btn-lg w-100" onclick="runScreening('{{ job.id }}')">
                     <i class="bi bi-arrow-repeat me-1"></i> Re-Screen
+                </button>
+                {% endif %}
+                {% if job.has_rubric %}
+                <button class="btn btn-outline-secondary btn-lg w-100" onclick="viewRubric('{{ job.id }}')">
+                    <i class="bi bi-journal-text me-1"></i> View Rubric
+                </button>
+                {% else %}
+                <button class="btn btn-outline-secondary btn-lg w-100" onclick="generateRubric('{{ job.id }}')">
+                    <i class="bi bi-magic me-1"></i> Generate Rubric
                 </button>
                 {% endif %}
             </div>
@@ -258,6 +267,48 @@
         </div>
     </div>
 </div>
+<!-- Rubric Generation Modal -->
+<div class="modal fade" id="rubricModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-journal-text me-2"></i>Generating Rubric
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mb-2" id="rubricStatus">Starting rubric generation...</p>
+                </div>
+                <div id="rubricSteps" class="text-start small"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Rubric View Modal -->
+<div class="modal fade" id="rubricViewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-grid-3x3 me-2"></i>Job Rubric
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="rubricViewContent">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mb-0">Loading rubric...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -286,6 +337,316 @@ async function runScreening(jobId) {
         document.getElementById('screeningStatus').innerHTML = `
             <i class="bi bi-x-circle text-danger me-2"></i>
             Error: ${error.message}
+        `;
+    }
+}
+
+async function generateRubric(jobId) {
+    const modalEl = document.getElementById('rubricModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const statusEl = document.getElementById('rubricStatus');
+    const stepsEl = document.getElementById('rubricSteps');
+
+    statusEl.innerHTML = 'Starting rubric generation...';
+    stepsEl.innerHTML = '';
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/rubrics/jobs/${jobId}/generate`, { method: 'POST' });
+        const data = await response.json();
+
+        const buildStepsHtml = (steps) => {
+            if (!Array.isArray(steps) || steps.length === 0) {
+                return '';
+            }
+            let html = '<ul class="list-unstyled mb-0">';
+            for (const step of steps) {
+                const status = step.status || 'in_progress';
+                let icon = 'bi-hourglass-split text-secondary';
+                let badgeClass = 'badge bg-secondary';
+                if (status === 'completed') {
+                    icon = 'bi-check-circle-fill text-success';
+                    badgeClass = 'badge bg-success';
+                } else if (status === 'failed') {
+                    icon = 'bi-x-circle-fill text-danger';
+                    badgeClass = 'badge bg-danger';
+                }
+                html += `
+                    <li class="mb-1 d-flex align-items-center">
+                        <i class="bi ${icon} me-2"></i>
+                        <span class="me-2 text-capitalize">${step.step || ''}</span>
+                        <span class="${badgeClass} text-capitalize">${status}</span>
+                        ${step.message ? `<span class="ms-2 text-muted">${step.message}</span>` : ''}
+                    </li>
+                `;
+            }
+            html += '</ul>';
+            return html;
+        };
+
+        if (data.success) {
+            statusEl.innerHTML = `
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Rubric generated successfully.
+            `;
+            stepsEl.innerHTML = buildStepsHtml(data.steps);
+            // Optional: refresh after a short delay so UI can use the new rubric
+            setTimeout(() => {
+                modal.hide();
+                location.reload();
+            }, 1800);
+        } else {
+            statusEl.innerHTML = `
+                <i class="bi bi-x-circle text-danger me-2"></i>
+                ${data.error || data.message || 'Rubric generation failed.'}
+            `;
+            stepsEl.innerHTML = buildStepsHtml(data.steps);
+        }
+    } catch (error) {
+        statusEl.innerHTML = `
+            <i class="bi bi-x-circle text-danger me-2"></i>
+            Error: ${error.message}
+        `;
+    }
+}
+
+async function viewRubric(jobId) {
+    const modalEl = document.getElementById('rubricViewModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const contentEl = document.getElementById('rubricViewContent');
+
+    contentEl.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mb-0">Loading rubric...</p>
+        </div>
+    `;
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/rubrics/jobs/${jobId}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            contentEl.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="bi bi-x-circle me-2"></i>
+                    ${data.error || 'Unable to load rubric.'}
+                </div>
+            `;
+            return;
+        }
+
+        if (!data.rubric) {
+            contentEl.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="bi bi-info-circle text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-3 mb-0">No rubric is defined for this job yet.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const rubric = data.rubric;
+        const criteria = rubric.criteria || [];
+
+        const totalWeight = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
+
+        const criteriaRows = criteria.map(c => `
+            <tr>
+                <td class="fw-semibold">${c.name}</td>
+                <td class="text-center">
+                    <span class="badge bg-primary fs-6">${Math.round((c.weight || 0) * 100)}%</span>
+                </td>
+                <td class="text-muted">${c.description || ''}</td>
+            </tr>
+        `).join('');
+
+        contentEl.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h4 class="mb-1">
+                        <i class="bi bi-journal-text me-2"></i>${rubric.name || 'Job Rubric'}
+                    </h4>
+                    ${rubric.description ? `<p class="text-muted mb-0">${rubric.description}</p>` : ''}
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-8">
+                    <div class="card mb-4">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Evaluation Criteria</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th>Criterion</th>
+                                            <th class="text-center">Weight</th>
+                                            <th>Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${criteriaRows || `
+                                            <tr>
+                                                <td colspan="3" class="text-center text-muted py-3">
+                                                    No criteria defined in this rubric.
+                                                </td>
+                                            </tr>
+                                        `}
+                                    </tbody>
+                                    <tfoot class="bg-light">
+                                        <tr>
+                                            <td class="fw-bold">Total</td>
+                                            <td class="text-center">
+                                                <span class="badge bg-dark fs-6">
+                                                    ${Math.round(totalWeight * 100)}%
+                                                </span>
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0"><i class="bi bi-rulers me-2"></i>Scoring Scale (0-5)</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th class="text-center" style="width: 80px;">Score</th>
+                                            <th>Description</th>
+                                            <th style="width: 200px;">Visual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-success fs-5">5</span></td>
+                                            <td>Exceeds requirements significantly</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar bg-success" style="width: 100%">100%</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-success fs-5">4</span></td>
+                                            <td>Exceeds requirements</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar bg-success" style="width: 80%">80%</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-primary fs-5">3</span></td>
+                                            <td>Meets requirements</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar bg-primary" style="width: 60%">60%</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-warning text-dark fs-5">2</span></td>
+                                            <td>Partially meets requirements</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar bg-warning" style="width: 40%">40%</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-danger fs-5">1</span></td>
+                                            <td>Does not meet requirements</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar bg-danger" style="width: 20%">20%</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-secondary fs-5">0</span></td>
+                                            <td>Not applicable / No evidence</td>
+                                            <td>
+                                                <div class="progress" style="height: 20px;">
+                                                    <div class="progress-bar bg-secondary" style="width: 0%"></div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card mb-4">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0"><i class="bi bi-signpost-split me-2"></i>Recommendations</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #dcfce7;">
+                                <div class="me-3">
+                                    <i class="bi bi-star-fill text-success" style="font-size: 2rem;"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-success">STRONG YES - Interview</div>
+                                    <div class="text-muted small">Score: 90% - 100%</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #bbf7d0;">
+                                <div class="me-3">
+                                    <i class="bi bi-check-circle-fill text-success" style="font-size: 2rem;"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-success">YES - Interview</div>
+                                    <div class="text-muted small">Score: 80% - 89%</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #fef3c7;">
+                                <div class="me-3">
+                                    <i class="bi bi-question-circle-fill text-warning" style="font-size: 2rem;"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-warning">Maybe - Hold</div>
+                                    <div class="text-muted small">Score: 65% - 79%</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex align-items-center p-3 rounded" style="background-color: #fecaca;">
+                                <div class="me-3">
+                                    <i class="bi bi-x-circle-fill text-danger" style="font-size: 2rem;"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-danger">No - Reject</div>
+                                    <div class="text-muted small">Score: Below 65%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        contentEl.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <i class="bi bi-x-circle me-2"></i>
+                Error loading rubric: ${error.message}
+            </div>
         `;
     }
 }

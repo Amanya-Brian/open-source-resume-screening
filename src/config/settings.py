@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Resume Screening System"
     app_version: str = "0.1.0"
-    debug: bool = False
+    debug: bool = True
 
     # TalentMatch API
     talentmatch_api_url: str = Field(
-        default="http://localhost:5000",
+        default="http://127.0.0.1:5000",
         description="Base URL for TalentMatch API",
     )
     talentmatch_api_timeout: int = Field(
