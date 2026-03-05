@@ -37,11 +37,13 @@ def create_app() -> Flask:
     from src.api.routes.health import health_bp
     from src.api.routes.screening import screening_bp
     from src.api.routes.data_sync import data_sync_bp
+    from src.api.routes.rubrics import rubrics_bp
     from src.api.routes.portal import portal_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(screening_bp, url_prefix="/api/screening")
     app.register_blueprint(data_sync_bp, url_prefix="/api")
+    app.register_blueprint(rubrics_bp, url_prefix="/api")
     app.register_blueprint(portal_bp)  # Portal at root for web interface
 
     # Register error handlers
