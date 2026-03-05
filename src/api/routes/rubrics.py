@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
+from bson import ObjectId
 
 from flask import Blueprint, jsonify, request
 
@@ -208,15 +209,14 @@ def get_rubric_for_job(job_id: str):
         job = run_async(mongo.find_one("job_listings", {"_id": job_id}))
         if not job:
             return jsonify({"success": False, "error": "Job not found"}), 404
-        print(job)
         rubric_id = job.get("rubric_id")
         if not rubric_id:
             return jsonify({"success": True, "rubric": None})
 
-        rubric = run_async(mongo.find_one("rubrics", {"_id": rubric_id}))
+        rubric = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
         if not rubric:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
-
+        rubric["_id"] = str(rubric["_id"])
         return jsonify({"success": True, "rubric": rubric})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
