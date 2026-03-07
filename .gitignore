@@ -7,4 +7,4 @@ src/config/__pycache__/
 src/models/__pycache__/
 src/agents/__pycache__/
 src/api/__pycache__/
-src/metrics/__pycache__/
+src/metrics/__pycache__/talent/
