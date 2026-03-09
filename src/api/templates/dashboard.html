@@ -75,6 +75,7 @@
                     <tr>
                         <th>Job Title</th>
                         <th>Company</th>
+                        <th>Created</th>
                         <th>Applications</th>
                         <th>Screened</th>
                         <th>Status</th>
@@ -90,6 +91,7 @@
                             </a>
                         </td>
                         <td>{{ job.company }}</td>
+                        <td><small class="text-muted">{{ job.created_at or 'N/A' }}</small></td>
                         <td>
                             <span class="badge bg-primary">{{ job.application_count }}</span>
                         </td>
