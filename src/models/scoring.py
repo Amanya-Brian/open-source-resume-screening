@@ -36,12 +36,17 @@ class RecommendationLevel:
 
     @classmethod
     def from_percentage(cls, percentage: float) -> str:
-        """Get recommendation based on percentage score."""
-        if percentage >= 90:
+        """Get recommendation based on percentage score.
+
+        Tuned for higher recall to minimize false negatives:
+        the cost of excluding a qualified candidate outweighs the
+        operational cost of reviewing additional applicants.
+        """
+        if percentage >= 80:
             return cls.STRONG_YES
-        elif percentage >= 80:
-            return cls.YES
         elif percentage >= 65:
+            return cls.YES
+        elif percentage >= 50:
             return cls.MAYBE
         else:
             return cls.NO
@@ -191,10 +196,10 @@ class ScoringConfiguration(BaseModel):
         5: "Exceeds requirements significantly",
     })
     recommendation_thresholds: dict[str, tuple[float, float]] = Field(default_factory=lambda: {
-        "STRONG YES - Interview": (90, 100),
-        "YES - Interview": (80, 89.99),
-        "Maybe - Hold": (65, 79.99),
-        "No - Reject": (0, 64.99),
+        "STRONG YES - Interview": (80, 100),
+        "YES - Interview": (65, 79.99),
+        "Maybe - Hold": (50, 64.99),
+        "No - Reject": (0, 49.99),
     })
 
     def validate_weights(self) -> bool:
