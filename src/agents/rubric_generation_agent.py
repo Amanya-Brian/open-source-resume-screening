@@ -130,23 +130,40 @@ class RubricGenerationAgent(BaseAgent[RubricGenerationInput, RubricGenerationOut
             rubric_lines.append(f"- {crit.name} ({crit.weight_percentage}%): {crit.description}")
 
         prompt = (
-            "You are an expert recruiter. Here is a generic candidate evaluation "
-            "rubric with criteria and their weights:\n"
-            + "\n".join(rubric_lines)
-            + "\n\nThe following job posting requires you to adjust the rubric where necessary so that "
-            "the weights and descriptions reflect the priorities for this role. "
-            "Remove the relevant experience (Years) criterion unless the job explicitly requires it."
-            # "You may also add new criteria that are important for this position "
-            # "even if they were not in the generic rubric."
-            "Return ONLY valid JSON: a list of objects with keys 'name', 'key', "
-            "'weight' (decimal between 0 and 1) and 'description'. Ensure the "
-            "weights sum to 1.0.\n\n"
-            f"JOB TITLE: {job.title}\n"
-            f"REQUIREMENTS:\n- "
-            + "\n- ".join(job.requirements or [])
-            + ("\nPREFERRED QUALIFICATIONS:\n- " + "\n- ".join(job.preferred_qualifications or []) if job.preferred_qualifications else "")
-            + ("\nSKILLS:\n- " + "\n- ".join(job.required_skills or []) if job.required_skills else "")
-            + ("\nRESPONSIBILITIES:\n- " + "\n- ".join(getattr(job, 'responsibilities', []) or []) if getattr(job, 'responsibilities', None) else ""))
+    "You are an expert recruiter and talent evaluator. Your task is to adapt a standard "
+    "evaluation rubric to fit a specific job posting.\n\n"
+    "STANDARD RUBRIC (your starting point):\n"
+     + "\n".join(rubric_lines)+
+    "\n\nADAPTATION RULES — follow these strictly:\n"
+    "1. KEEP all standard criteria unless one is clearly irrelevant to this role (e.g. remove "
+    "'Leadership Experience' only if the role has zero supervisory responsibilities).\n"
+    "2. REWRITE each kept criterion's 'description' to be role-specific — reference actual "
+    "tools, certifications, regulations, or responsibilities from the job posting. "
+    "Never keep a generic description like 'Years of relevant work experience in the field'.\n"
+    "3. ADD at most 1–2 new criteria only if the job posting has a major theme not covered "
+    "by any standard criterion (e.g. 'Laboratory Safety' for a lab role, 'Regulatory Compliance' "
+    "for a finance role). Do NOT add criteria that overlap with existing ones.\n"
+    "4. REBALANCE weights to reflect how critical each criterion is for THIS role specifically. "
+    "Weights must sum exactly to 1.0.\n"
+    "5. Remove 'Relevant Experience (Years)' only if years of experience are NOT explicitly "
+    "stated anywhere in the requirements.\n"
+    "6. Return ONLY valid JSON — a list of objects with keys: "
+    "'name', 'key', 'weight' (decimal 0–1), 'description'. No explanation, no markdown.\n\n"
+    f"JOB TITLE: {job.title}\n\n"
+    "REQUIREMENTS:\n- " + "\n- ".join(job.requirements or [])
+    + (
+        "\n\nPREFERRED QUALIFICATIONS:\n- " + "\n- ".join(job.preferred_qualifications or [])
+        if job.preferred_qualifications else ""
+    )
+    + (
+        "\n\nREQUIRED SKILLS:\n- " + "\n- ".join(job.required_skills or [])
+        if job.required_skills else ""
+    )
+    + (
+        "\n\nKEY RESPONSIBILITIES:\n- " + "\n- ".join(getattr(job, 'responsibilities', []) or [])
+        if getattr(job, 'responsibilities', None) else ""
+    )
+    + "\n\nRemember: start from the standard rubric and adapt — do not invent a rubric from scratch.")
 
         system_prompt = (
             "You are a helpful assistant specialized in HR and hiring."
