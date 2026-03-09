@@ -60,13 +60,12 @@ class FairnessAgent(BaseAgent[FairnessInput, FairnessOutput]):
     - Generates fairness report
     """
 
-    PROTECTED_ATTRIBUTES = ["gender", "age_group", "ethnicity", "nationality"]
+    PROTECTED_ATTRIBUTES = ["gender", "age_group", "nationality"]
 
     # Values for counterfactual testing
     COUNTERFACTUAL_VALUES = {
-        "gender": ["male", "female", "non-binary"],
+        "gender": ["male", "female"],
         "age_group": ["18-25", "26-35", "36-45", "46+"],
-        "ethnicity": ["african", "asian", "caucasian", "hispanic", "other"],
         "nationality": ["local", "international"],
     }
 
