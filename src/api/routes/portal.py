@@ -40,7 +40,10 @@ def dashboard():
         run_async(mongo.connect())
 
         # Get stats
-        jobs = run_async(mongo.find_many("job_listings", {}))
+        jobs = run_async(mongo.find_many(
+            "job_listings", {},
+            sort=[("raw_data.created_at", -1)],
+        ))
         applications = run_async(mongo.find_many("applications", {}))
         results = run_async(mongo.find_many("screening_results", {}))
 
@@ -50,12 +53,24 @@ def dashboard():
             "total_results": len(results),
         }
 
-        # Get job list with application counts
+        # Get job list with application counts (sorted by created_at descending)
         job_list = []
-        for job in jobs[:10]:  # Limit to 10 most recent
+        for job in jobs[:10]:
             job_id = job.get("_id")
             job_apps = run_async(mongo.find_many("applications", {"job_id": job_id}))
             job_results = run_async(mongo.find_many("screening_results", {"job_id": job_id}))
+
+            raw_data = job.get("raw_data", {})
+            created_at = raw_data.get("created_at", "")
+            # Format date for display (e.g., "2026-02-07T16:05:24" -> "Feb 07, 2026")
+            created_display = ""
+            if created_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+                    created_display = dt.strftime("%b %d, %Y")
+                except (ValueError, TypeError):
+                    created_display = str(created_at)[:10]
 
             job_list.append({
                 "id": job_id,
@@ -64,6 +79,7 @@ def dashboard():
                 "location": job.get("location", ""),
                 "application_count": len(job_apps),
                 "screened_count": len(job_results),
+                "created_at": created_display,
             })
 
         return render_template(
@@ -90,13 +106,27 @@ def jobs_list():
         mongo = get_mongo_service()
         run_async(mongo.connect())
 
-        jobs = run_async(mongo.find_many("job_listings", {}))
+        jobs = run_async(mongo.find_many(
+            "job_listings", {},
+            sort=[("raw_data.created_at", -1)],
+        ))
 
         job_list = []
         for job in jobs:
             job_id = job.get("_id")
             job_apps = run_async(mongo.find_many("applications", {"job_id": job_id}))
             job_results = run_async(mongo.find_many("screening_results", {"job_id": job_id}))
+
+            raw_data = job.get("raw_data", {})
+            created_at = raw_data.get("created_at", "")
+            created_display = ""
+            if created_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+                    created_display = dt.strftime("%b %d, %Y")
+                except (ValueError, TypeError):
+                    created_display = str(created_at)[:10]
 
             job_list.append({
                 "id": job_id,
@@ -105,6 +135,7 @@ def jobs_list():
                 "location": job.get("location", ""),
                 "application_count": len(job_apps),
                 "screened_count": len(job_results),
+                "created_at": created_display,
             })
 
         return render_template(

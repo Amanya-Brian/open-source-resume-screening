@@ -717,7 +717,7 @@ async function loadFairnessReport(jobId) {
                             <div class="card-body text-center">
                                 <h1 class="mb-0 fw-bold">${dir ? dir.toFixed(3) : 'N/A'}</h1>
                                 <h6 class="mt-2 mb-1">Disparate Impact Ratio</h6>
-                                <small class="text-muted">Target: ≥ 0.8 (Four-Fifths Rule)</small>
+                                <small class="text-muted">Target: &ge; 0.8 (Four-Fifths Rule)</small>
                             </div>
                         </div>
                     </div>
@@ -751,7 +751,7 @@ async function loadFairnessReport(jobId) {
                 ` : ''}
 
                 ${metrics.attribute_variance && Object.keys(metrics.attribute_variance).length > 0 ? `
-                    <div class="card bg-light">
+                    <div class="card bg-light mb-3">
                         <div class="card-body">
                             <h6 class="mb-3"><i class="bi bi-graph-up me-2"></i>Attribute Variance (Counterfactual Analysis)</h6>
                             <div class="row g-2">
@@ -767,6 +767,66 @@ async function loadFairnessReport(jobId) {
                                 `).join('')}
                             </div>
                             <small class="text-muted d-block mt-2">Target: 0% variance (protected attributes should not affect ranking)</small>
+                        </div>
+                    </div>
+                ` : ''}
+
+                ${report.metric_explanations ? `
+                    <div class="card border-0 bg-light">
+                        <div class="card-body">
+                            <h6 class="mb-3"><i class="bi bi-info-circle me-2"></i>What These Metrics Mean</h6>
+                            <div class="accordion accordion-flush" id="metricExplanations">
+                                <div class="accordion-item bg-transparent">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed bg-transparent py-2" type="button" data-bs-toggle="collapse" data-bs-target="#explainDIR">
+                                            <strong>Disparate Impact Ratio (DIR)</strong>
+                                        </button>
+                                    </h2>
+                                    <div id="explainDIR" class="accordion-collapse collapse" data-bs-parent="#metricExplanations">
+                                        <div class="accordion-body py-2 small">${report.metric_explanations.disparate_impact_ratio}</div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item bg-transparent">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed bg-transparent py-2" type="button" data-bs-toggle="collapse" data-bs-target="#explainDP">
+                                            <strong>Demographic Parity</strong>
+                                        </button>
+                                    </h2>
+                                    <div id="explainDP" class="accordion-collapse collapse" data-bs-parent="#metricExplanations">
+                                        <div class="accordion-body py-2 small">${report.metric_explanations.demographic_parity}</div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item bg-transparent">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed bg-transparent py-2" type="button" data-bs-toggle="collapse" data-bs-target="#explainEO">
+                                            <strong>Equal Opportunity</strong>
+                                        </button>
+                                    </h2>
+                                    <div id="explainEO" class="accordion-collapse collapse" data-bs-parent="#metricExplanations">
+                                        <div class="accordion-body py-2 small">${report.metric_explanations.equal_opportunity}</div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item bg-transparent">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed bg-transparent py-2" type="button" data-bs-toggle="collapse" data-bs-target="#explainAV">
+                                            <strong>Attribute Variance (Counterfactual Testing)</strong>
+                                        </button>
+                                    </h2>
+                                    <div id="explainAV" class="accordion-collapse collapse" data-bs-parent="#metricExplanations">
+                                        <div class="accordion-body py-2 small">${report.metric_explanations.attribute_variance}</div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item bg-transparent">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed bg-transparent py-2" type="button" data-bs-toggle="collapse" data-bs-target="#explainCompliance">
+                                            <strong>Compliance</strong>
+                                        </button>
+                                    </h2>
+                                    <div id="explainCompliance" class="accordion-collapse collapse" data-bs-parent="#metricExplanations">
+                                        <div class="accordion-body py-2 small">${report.metric_explanations.compliance}</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 ` : ''}
