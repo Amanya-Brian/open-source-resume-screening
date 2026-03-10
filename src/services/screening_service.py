@@ -953,6 +953,35 @@ class ScreeningService:
                     "equal_opportunity": fairness_report.metrics.equal_opportunity,
                     "attribute_variance": fairness_report.metrics.attribute_variance,
                 },
+                "metric_explanations": {
+                    "disparate_impact_ratio": (
+                        "Measures whether selection rates are proportional across demographic groups. "
+                        "Calculated as the ratio of the selection rate of the least-selected group to the "
+                        "most-selected group. A value >= 0.8 satisfies the Four-Fifths Rule (80% rule), "
+                        "meaning no group is selected at a rate less than 80% of the highest-selected group."
+                    ),
+                    "demographic_parity": (
+                        "Measures how evenly candidates are selected across demographic groups. "
+                        "A score of 100% means all groups have identical selection rates. "
+                        "Lower values indicate uneven representation in shortlisted candidates."
+                    ),
+                    "equal_opportunity": (
+                        "Measures whether qualified candidates have equal chances of being selected "
+                        "regardless of their demographic group. Ensures the system does not systematically "
+                        "disadvantage any group of equally qualified applicants."
+                    ),
+                    "attribute_variance": (
+                        "Results of counterfactual fairness testing: for each candidate, protected attributes "
+                        "(gender, age, ethnicity, nationality) are hypothetically changed and the screening is "
+                        "re-evaluated. A variance of 0% means protected attributes have no effect on rankings, "
+                        "which is the target for a fair system."
+                    ),
+                    "compliance": (
+                        "The system is compliant when the Disparate Impact Ratio >= 0.8 (Four-Fifths Rule) "
+                        "AND attribute variance from counterfactual testing is near zero. Non-compliance "
+                        "indicates potential bias that should be investigated and addressed."
+                    ),
+                },
                 "violations": fairness_report.violations,
                 "recommendations": fairness_report.recommendations,
                 "generated_at": fairness_report.generated_at.isoformat() if fairness_report.generated_at else None,
