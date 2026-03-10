@@ -179,6 +179,8 @@ def job_detail(job_id: str):
             "description": job.get("description", ""),
             "qualifications": job.get("qualifications", []),
             "responsibilities": job.get("responsibilities", []),
+            "rubric_id": job.get("rubric_id"),
+            "has_rubric": bool(job.get("rubric_id")),
         }
 
         # Format applications
