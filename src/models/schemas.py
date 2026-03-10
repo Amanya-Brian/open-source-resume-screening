@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
+from src.models.scoring import EvaluationCriterion
 
 
 # === Enums ===
@@ -181,6 +182,27 @@ class JobListing(BaseModel):
     posted_at: datetime = Field(default_factory=datetime.now)
     deadline: Optional[datetime] = None
     is_active: bool = True
+     # Optional reference to a stored rubric document
+    rubric_id: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+
+
+class Rubric(BaseModel):
+    """Stored evaluation rubric.
+
+    This defines the scoring dimensions (criteria) and their weights.
+    It is independent of any particular candidate evaluation; a job can
+    reference the rubric via its ``rubric_id``.
+    """
+
+    id: str = Field(alias="_id", default="")
+    name: Optional[str] = None
+    description: Optional[str] = None
+    criteria: list[EvaluationCriterion] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
 
     class Config:
         populate_by_name = True

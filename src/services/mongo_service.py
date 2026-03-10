@@ -96,6 +96,11 @@ COLLECTION_CONFIGS = {
             {"keys": [("job_id", 1), ("candidate_id", 1)], "unique": True},
         ]
     },
+    "rubrics": {
+        "indexes": [
+            {"keys": [("created_at", -1)]},
+        ]
+    },
 }
 
 
