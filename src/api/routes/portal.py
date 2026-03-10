@@ -301,18 +301,64 @@ def candidate_detail(job_id: str, candidate_id: str):
 
 @portal_bp.route("/scoring-matrix")
 def scoring_matrix():
-    """View the scoring matrix configuration."""
-    criteria = []
-    for c in DefaultCriteria.get_all():
-        criteria.append({
-            "name": c.name,
-            "key": c.key,
-            "weight_percentage": int(c.weight * 100),
-            "description": c.description,
-        })
+    """View the global scoring matrix and existing rubrics."""
+    try:
+        mongo = get_mongo_service()
+        run_async(mongo.connect())
 
-    return render_template(
-        "scoring_matrix.html",
-        active_page="scoring",
-        criteria=criteria,
-    )
+        # Default/global criteria (explanatory)
+        criteria = []
+        for c in DefaultCriteria.get_all():
+            criteria.append({
+                "name": c.name,
+                "key": c.key,
+                "weight_percentage": int(c.weight * 100),
+                "description": c.description,
+            })
+
+        # Existing rubrics per job
+        rubrics_view: list[dict[str, Any]] = []
+        rubrics = run_async(mongo.find_many("rubrics", {}, sort=[("created_at", -1)]))
+
+        for r in rubrics:
+            rubric_id = str(r.get("_id"))
+            created_at = r.get("created_at")
+            created_display = ""
+            if created_at:
+                try:
+                    from datetime import datetime
+                    dt = created_at if isinstance(created_at, datetime) else datetime.fromisoformat(
+                        str(created_at).replace("Z", "+00:00")
+                    )
+                    created_display = dt.strftime("%b %d, %Y")
+                except Exception:
+                    created_display = str(created_at)[:10]
+
+            # Find the job that references this rubric (if any)
+            job = run_async(mongo.find_one("job_listings", {"rubric_id": rubric_id}))
+            job_id = job.get("_id") if job else None
+            rubrics_view.append({
+                "id": rubric_id,
+                "name": r.get("name", "Untitled Rubric"),
+                "description": r.get("description", ""),
+                "created_at": created_display,
+                "job_id": job_id,
+                "job_title": job.get("title", "Unlinked") if job else "Unlinked",
+                "job_company": job.get("company", "") if job else "",
+            })
+
+        return render_template(
+            "scoring_matrix.html",
+            active_page="scoring",
+            criteria=criteria,
+            rubrics=rubrics_view,
+        )
+
+    except Exception as e:
+        logger.error(f"Scoring matrix error: {e}")
+        return render_template(
+            "scoring_matrix.html",
+            active_page="scoring",
+            criteria=[],
+            rubrics=[],
+        )
