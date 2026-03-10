@@ -390,17 +390,24 @@ async function generateRubric(jobId) {
                 Rubric generated successfully.
             `;
             stepsEl.innerHTML = buildStepsHtml(data.steps);
+            if (typeof showToast === 'function') {
+                showToast('Rubric generated successfully.', 'success');
+            }
             // Optional: refresh after a short delay so UI can use the new rubric
             setTimeout(() => {
                 modal.hide();
                 location.reload();
             }, 1800);
         } else {
+            const message = data.error || data.message || 'Rubric generation failed.';
             statusEl.innerHTML = `
                 <i class="bi bi-x-circle text-danger me-2"></i>
-                ${data.error || data.message || 'Rubric generation failed.'}
+                ${message}
             `;
             stepsEl.innerHTML = buildStepsHtml(data.steps);
+            if (typeof showToast === 'function') {
+                showToast(message, 'error');
+            }
         }
     } catch (error) {
         statusEl.innerHTML = `
