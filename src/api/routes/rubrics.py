@@ -192,11 +192,84 @@ def get_rubric(rubric_id: str):
     try:
         mongo = get_mongo_service()
         run_async(mongo.connect())
-        doc = run_async(mongo.find_one("rubrics", {"_id": rubric_id}))
+        doc = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
         if not doc:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
+        doc["_id"] = str(doc["_id"])
         return jsonify({"success": True, "rubric": doc})
     except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@rubrics_bp.route("/rubrics/<rubric_id>/criteria/<criterion_key>", methods=["PATCH"])
+def update_rubric_criterion(rubric_id: str, criterion_key: str):
+    """Update a single criterion's fields (e.g. weight) within a rubric.
+
+    Body (JSON):
+        {
+            "weight": 0.2,
+            "name": "New name",            # optional
+            "description": "New desc"      # optional
+        }
+    """
+    try:
+        if not request.is_json:
+            return jsonify({"success": False, "error": "JSON body required"}), 400
+
+        data = request.get_json(silent=True) or {}
+        allowed_fields = {"weight", "name", "description"}
+        updates = {k: v for k, v in data.items() if k in allowed_fields}
+
+        if "weight" in updates:
+            try:
+                updates["weight"] = float(updates["weight"])
+            except (TypeError, ValueError):
+                return jsonify({"success": False, "error": "weight must be a number"}), 400
+
+        if not updates:
+            return jsonify({"success": False, "error": "No updatable fields provided"}), 400
+
+        mongo = get_mongo_service()
+        run_async(mongo.connect())
+
+        # Load rubric
+        rubric = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
+        if not rubric:
+            return jsonify({"success": False, "error": "Rubric not found"}), 404
+
+        criteria = rubric.get("criteria") or []
+        updated = False
+        for c in criteria:
+            if c.get("key") == criterion_key:
+                for field, value in updates.items():
+                    c[field] = value
+                updated = True
+                break
+
+        if not updated:
+            return jsonify({"success": False, "error": "Criterion not found in rubric"}), 404
+
+        # Ensure total weight does not exceed 1.0 (100%)
+        total_weight = sum(float(c.get("weight") or 0.0) for c in criteria)
+        if total_weight > 1.0 + 1e-6:
+            return jsonify({
+                "success": False,
+                "error": f"Total weight would be {total_weight * 100:.1f}%. It cannot exceed 100%.",
+            }), 400
+
+        # Persist updated criteria
+        run_async(mongo.update_one(
+            "rubrics",
+            {"_id": ObjectId(rubric_id)},
+            {"$set": {"criteria": criteria, "updated_at": datetime.now()}},
+        ))
+
+        rubric["criteria"] = criteria
+        rubric["_id"] = str(rubric["_id"])
+
+        return jsonify({"success": True, "rubric": rubric})
+    except Exception as e:
+        logger.error(f"update_rubric_criterion error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -206,6 +279,7 @@ def get_rubric_for_job(job_id: str):
     try:
         mongo = get_mongo_service()
         run_async(mongo.connect())
+        print('job_id', job_id);
         job = run_async(mongo.find_one("job_listings", {"_id": job_id}))
         if not job:
             return jsonify({"success": False, "error": "Job not found"}), 404
@@ -246,14 +320,16 @@ def update_rubric(rubric_id: str):
         run_async(mongo.connect())
         modified = run_async(mongo.update_one(
             "rubrics",
-            {"_id": rubric_id},
+            {"_id": ObjectId(rubric_id)},
             {"$set": update_doc},
         ))
 
         if not modified:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
 
-        updated = run_async(mongo.find_one("rubrics", {"_id": rubric_id}))
+        updated = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
+        if updated:
+            updated["_id"] = str(updated["_id"])
         return jsonify({"success": True, "rubric": updated})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -265,9 +341,8 @@ def delete_rubric(rubric_id: str):
     try:
         mongo = get_mongo_service()
         run_async(mongo.connect())
-
         # Delete rubric
-        deleted = run_async(mongo.delete_one("rubrics", {"_id": rubric_id}))
+        deleted = run_async(mongo.delete_one("rubrics", {"_id": ObjectId(rubric_id)}))
         if not deleted:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
 
