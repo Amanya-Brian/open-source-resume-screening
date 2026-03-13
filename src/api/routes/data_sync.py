@@ -418,65 +418,124 @@ def list_job_candidates(job_id: str):
         }), 500
 
 
+# In-memory store for screening task progress
+# { task_id: { status, current, total, candidate_name, message, results, error } }
+_screening_tasks: dict[str, Any] = {}
+
+
 @data_sync_bp.route("/screening/jobs/<job_id>/screen", methods=["POST"])
 def screen_job_candidates(job_id: str):
-    """Run screening on all candidates for a job.
+    """Start screening in a background thread and return a task_id immediately.
 
-    Args:
-        job_id: Job listing ID
-
-    Returns:
-        JSON response with screening results
+    The client should then poll GET /screening/jobs/<job_id>/screen/progress
+    to track progress and retrieve results when done.
     """
-    try:
-        mongo = get_mongo_service()
-        run_async(mongo.connect())
+    import uuid
+    import threading
 
-        # Create screening service
-        screening_service = ScreeningService(mongo_service=mongo)
+    task_id = str(uuid.uuid4())
 
-        # Run screening
-        evaluations = run_async(screening_service.screen_job_candidates(job_id))
+    _screening_tasks[task_id] = {
+        "status": "starting",
+        "current": 0,
+        "total": 0,
+        "candidate_name": "",
+        "message": "Initializing...",
+        "elapsed": 0,
+        "results": None,
+        "error": None,
+    }
 
-        return jsonify({
-            "success": True,
-            "job_id": job_id,
-            "candidates_screened": len(evaluations),
-            "results": [
-                {
-                    "rank": i + 1,
-                    "candidate_id": eval.candidate_id,
-                    "candidate_name": eval.candidate_name,
-                    "total_score": round(eval.total_weighted_score, 2),
-                    "percentage": round(eval.percentage, 1),
-                    "recommendation": eval.recommendation,
-                    "criteria_scores": [
-                        {
-                            "criterion": cs.criterion_name,
-                            "score": cs.raw_score,
-                            "weight": f"{int(cs.weight * 100)}%",
-                            "weighted": round(cs.weighted_score, 2),
-                        }
-                        for cs in eval.criteria_scores
-                    ],
-                    "strengths": eval.strengths,
-                    "concerns": eval.concerns,
-                }
-                for i, eval in enumerate(evaluations)
-            ],
-        })
+    def run_in_thread():
+        import time
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        start = time.time()
 
-    except ValueError as e:
-        return jsonify({
-            "error": "Screening failed",
-            "message": str(e),
-        }), 404
-    except Exception as e:
-        logger.error(f"Screening failed: {e}")
-        return jsonify({
-            "error": "Screening failed",
-            "message": str(e),
-        }), 500
+        try:
+            from src.services.mongo_service import MongoService as _Mongo
+
+            async def _screen():
+                mongo = _Mongo()
+                await mongo.connect()
+
+                # Pre-fetch application count for time estimate
+                apps = await mongo.find_many("applications", {"job_id": job_id})
+                total = len(apps)
+                est_secs = total * 30
+                _screening_tasks[task_id].update({
+                    "status": "running",
+                    "total": total,
+                    "est_seconds": est_secs,
+                    "message": f"Found {total} candidates — est. ~{est_secs // 60}m {est_secs % 60}s" if est_secs >= 60 else f"Found {total} candidates — est. ~{est_secs}s",
+                })
+
+                svc = ScreeningService(mongo_service=mongo)
+
+                def on_progress(current, total, name, msg):
+                    _screening_tasks[task_id].update({
+                        "status": "running",
+                        "current": current,
+                        "total": total,
+                        "candidate_name": name,
+                        "message": msg,
+                        "elapsed": int(time.time() - start),
+                    })
+
+                evaluations = await svc.screen_job_candidates(
+                    job_id,
+                    progress_callback=on_progress,
+                )
+
+                _screening_tasks[task_id].update({
+                    "status": "complete",
+                    "current": total,
+                    "message": "Screening complete!",
+                    "elapsed": int(time.time() - start),
+                    "results": {
+                        "success": True,
+                        "job_id": job_id,
+                        "candidates_screened": len(evaluations),
+                        "results": [
+                            {
+                                "rank": i + 1,
+                                "candidate_id": ev.candidate_id,
+                                "candidate_name": ev.candidate_name,
+                                "total_score": round(ev.total_weighted_score, 2),
+                                "percentage": round(ev.percentage, 1),
+                                "recommendation": ev.recommendation,
+                                "strengths": ev.strengths,
+                                "concerns": ev.concerns,
+                            }
+                            for i, ev in enumerate(evaluations)
+                        ],
+                    },
+                })
+
+            loop.run_until_complete(_screen())
+
+        except Exception as e:
+            logger.error(f"Background screening error: {e}", exc_info=True)
+            _screening_tasks[task_id].update({
+                "status": "error",
+                "error": str(e),
+                "elapsed": int(time.time() - start),
+            })
+        finally:
+            loop.close()
+
+    threading.Thread(target=run_in_thread, daemon=True).start()
+
+    return jsonify({"task_id": task_id, "job_id": job_id})
+
+
+@data_sync_bp.route("/screening/jobs/<job_id>/screen/progress/<task_id>", methods=["GET"])
+def screen_progress(job_id: str, task_id: str):
+    """Poll this endpoint to get screening progress for a running task."""
+    task = _screening_tasks.get(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify(task)
 
 
 @data_sync_bp.route("/data/jobs/<job_id>/results", methods=["GET"])
