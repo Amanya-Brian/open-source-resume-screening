@@ -254,15 +254,28 @@
 {% endif %}
 
 <!-- Screening Modal -->
-<div class="modal fade" id="screeningModal" tabindex="-1">
+<div class="modal fade" id="screeningModal" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Running Screening</h5>
             </div>
-            <div class="modal-body text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status"></div>
-                <p class="mb-0" id="screeningStatus">Evaluating candidates...</p>
+            <div class="modal-body py-4">
+                <div class="text-center mb-3">
+                    <div class="spinner-border text-primary mb-2" role="status" id="screeningSpinner"></div>
+                    <p class="fw-semibold mb-1">Evaluating candidates, this might take some time. Please be patient...</p>
+                    <p class="text-muted small mb-0" id="screeningEstimate"></p>
+                </div>
+                <div class="progress mb-3" style="height: 8px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                         role="progressbar" style="width: 5%" id="screeningProgress"></div>
+                </div>
+                <p class="text-center mb-1" id="screeningStatus">
+                    <i class="bi bi-hourglass-split me-1 text-muted"></i>
+                    <span id="screeningMessage">Initializing...</span>
+                </p>
+                <p class="text-center text-muted small mb-0" id="screeningCandidate"></p>
+                <p class="text-center text-muted small mb-0" id="screeningTimer"></p>
             </div>
         </div>
     </div>
@@ -317,27 +330,79 @@ async function runScreening(jobId) {
     const modal = new bootstrap.Modal(document.getElementById('screeningModal'));
     modal.show();
 
-    try {
-        const response = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
-        const data = await response.json();
+    const progress  = document.getElementById('screeningProgress');
+    const message   = document.getElementById('screeningMessage');
+    const candidate = document.getElementById('screeningCandidate');
+    const estimate  = document.getElementById('screeningEstimate');
+    const timerEl   = document.getElementById('screeningTimer');
+    const spinner   = document.getElementById('screeningSpinner');
 
-        if (data.success) {
-            document.getElementById('screeningStatus').innerHTML = `
-                <i class="bi bi-check-circle text-success me-2"></i>
-                Screened ${data.candidates_screened} candidates!
-            `;
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            document.getElementById('screeningStatus').innerHTML = `
-                <i class="bi bi-x-circle text-danger me-2"></i>
-                ${data.message}
-            `;
-        }
+    // Elapsed timer
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+        const s = Math.floor((Date.now() - startTime) / 1000);
+        timerEl.textContent = `Elapsed: ${s >= 60 ? Math.floor(s / 60) + 'm ' : ''}${s % 60}s`;
+    }, 1000);
+
+    try {
+        // POST kicks off screening immediately and returns a task_id
+        const startRes = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
+        const startData = await startRes.json();
+        const taskId = startData.task_id;
+
+        // Poll every 2 seconds for progress updates
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/screening/jobs/${jobId}/screen/progress/${taskId}`);
+                const task = await res.json();
+
+                const pct = task.total > 0
+                    ? Math.round(((task.current + 1) / task.total) * 100)
+                    : 5;
+
+                if (task.status === 'running' || task.status === 'starting') {
+                    progress.style.width = Math.max(5, pct) + '%';
+                    message.textContent = task.message || 'Processing...';
+                    if (task.candidate_name) {
+                        candidate.textContent = `Candidate ${task.current + 1} of ${task.total}: ${task.candidate_name}`;
+                    }
+                    if (task.est_seconds && !estimate.textContent) {
+                        const m = Math.floor(task.est_seconds / 60), s = task.est_seconds % 60;
+                        estimate.textContent = `${task.total} candidates · Est. ~${m > 0 ? m + 'm ' : ''}${s}s`;
+                    }
+                }
+
+                if (task.status === 'complete') {
+                    clearInterval(pollInterval);
+                    clearInterval(timerInterval);
+                    progress.style.width = '100%';
+                    progress.classList.remove('progress-bar-animated');
+                    progress.classList.add('bg-success');
+                    spinner.classList.add('d-none');
+                    message.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i> Done! Screened ${task.results.candidates_screened} candidates.`;
+                    candidate.textContent = '';
+                    timerEl.textContent = `Completed in ${task.elapsed}s`;
+                    setTimeout(() => location.reload(), 2000);
+                }
+
+                if (task.status === 'error') {
+                    clearInterval(pollInterval);
+                    clearInterval(timerInterval);
+                    spinner.classList.add('d-none');
+                    progress.classList.add('bg-danger');
+                    message.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i> ${task.error}`;
+                }
+
+            } catch (err) {
+                clearInterval(pollInterval);
+                clearInterval(timerInterval);
+                message.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i> Poll error: ${err.message}`;
+            }
+        }, 2000);
+
     } catch (error) {
-        document.getElementById('screeningStatus').innerHTML = `
-            <i class="bi bi-x-circle text-danger me-2"></i>
-            Error: ${error.message}
-        `;
+        clearInterval(timerInterval);
+        message.innerHTML = `<i class="bi bi-x-circle text-danger me-1"></i> Error: ${error.message}`;
     }
 }
 

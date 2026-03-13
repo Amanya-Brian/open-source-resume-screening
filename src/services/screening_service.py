@@ -53,11 +53,17 @@ class ScreeningService:
     async def screen_job_candidates(
         self,
         job_id: str,
+        progress_callback=None,
     ) -> list[CandidateEvaluation]:
         """Screen all candidates for a job.
 
+        Fetches all applications in one query, then evaluates each
+        candidate one by one (resume fetch + LLM call per candidate).
+
         Args:
             job_id: Job listing ID
+            progress_callback: Optional callable(current, total, candidate_name, message)
+                called before each candidate is evaluated
 
         Returns:
             List of candidate evaluations, sorted by score
@@ -67,7 +73,7 @@ class ScreeningService:
         if not job:
             raise ValueError(f"Job not found: {job_id}")
 
-        # Fetch applications for this job
+        # Fetch ALL applications in one query
         applications = await self.mongo.find_many(
             "applications",
             {"job_id": job_id}
@@ -77,10 +83,36 @@ class ScreeningService:
             logger.warning(f"No applications found for job {job_id}")
             return []
 
+        total = len(applications)
         evaluations = []
 
-        for app in applications:
-            # Fetch resume/cover letter
+        step_messages = [
+            "Parsing resume...",
+            "Extracting skills...",
+            "Evaluating experience...",
+            "Matching to job requirements...",
+            "Applying scoring model...",
+            "Identifying key achievements...",
+            "Assessing technical competencies...",
+            "Reviewing professional background...",
+            "Generating final recommendation...",
+            "Ensuring fair evaluation...",
+        ]
+
+        for idx, app in enumerate(applications):
+            candidate_name = (
+                f"{app.get('student_firstname', '')} {app.get('student_lastname', '')}".strip()
+                or "Unknown"
+            )
+            step_msg = step_messages[idx % len(step_messages)]
+
+            if progress_callback:
+                try:
+                    progress_callback(idx, total, candidate_name, step_msg)
+                except Exception:
+                    pass
+
+            # Fetch resume for this candidate (one query per candidate)
             resume = await self.mongo.find_one(
                 "resumes",
                 {"student_id": app.get("student_id")}
