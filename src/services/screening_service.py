@@ -1,5 +1,6 @@
 """Screening service for evaluating candidates from MongoDB."""
 
+import asyncio
 import logging
 import re
 from typing import Any, Optional
@@ -84,7 +85,6 @@ class ScreeningService:
             return []
 
         total = len(applications)
-        evaluations = []
 
         step_messages = [
             "Parsing resume...",
@@ -99,31 +99,41 @@ class ScreeningService:
             "Ensuring fair evaluation...",
         ]
 
-        for idx, app in enumerate(applications):
-            candidate_name = (
-                f"{app.get('student_firstname', '')} {app.get('student_lastname', '')}".strip()
-                or "Unknown"
-            )
-            step_msg = step_messages[idx % len(step_messages)]
+        # Pre-initialize LLM once before any candidate evaluation (avoids cold-start on first candidate)
+        if self.use_llm:
+            try:
+                get_llm_service().initialize()
+                self._llm_initialized = True
+            except Exception as e:
+                logger.warning(f"LLM pre-initialization failed: {e} — will use rule-based scoring")
 
-            if progress_callback:
-                try:
-                    progress_callback(idx, total, candidate_name, step_msg)
-                except Exception:
-                    pass
+        # Batch-fetch ALL resumes in one query instead of N individual queries
+        student_ids = [app.get("student_id") for app in applications if app.get("student_id")]
+        if student_ids:
+            all_resumes = await self.mongo.find_many("resumes", {"student_id": {"$in": student_ids}})
+            resume_map = {r["student_id"]: r for r in all_resumes}
+        else:
+            resume_map = {}
+        logger.info(f"Pre-fetched {len(resume_map)}/{total} resumes")
 
-            # Fetch resume for this candidate (one query per candidate)
-            resume = await self.mongo.find_one(
-                "resumes",
-                {"student_id": app.get("student_id")}
-            )
+        # Evaluate candidates concurrently — limits to 3 simultaneous to avoid overwhelming Ollama
+        _sem = asyncio.Semaphore(3)
 
-            evaluation = await self._evaluate_candidate(
-                application=app,
-                job=job,
-                resume=resume,
-            )
-            evaluations.append(evaluation)
+        async def _evaluate_one(idx: int, app: dict) -> CandidateEvaluation:
+            async with _sem:
+                candidate_name = (
+                    f"{app.get('student_firstname', '')} {app.get('student_lastname', '')}".strip()
+                    or "Unknown"
+                )
+                if progress_callback:
+                    try:
+                        progress_callback(idx, total, candidate_name, step_messages[idx % len(step_messages)])
+                    except Exception:
+                        pass
+                resume = resume_map.get(app.get("student_id"))
+                return await self._evaluate_candidate(application=app, job=job, resume=resume)
+
+        evaluations = list(await asyncio.gather(*[_evaluate_one(i, app) for i, app in enumerate(applications)]))
 
         # Sort by total weighted score (descending)
         evaluations.sort(key=lambda e: e.total_weighted_score, reverse=True)
@@ -287,7 +297,8 @@ class ScreeningService:
             "responsibilities": responsibilities,
         }
 
-        result = llm.evaluate_candidate(candidate_text, job_requirements, criteria)
+        # Run the blocking requests.post call in a thread so the event loop stays free
+        result = await asyncio.to_thread(llm.evaluate_candidate, candidate_text, job_requirements, criteria)
 
         # Parse LLM response into CriterionScore objects
         criteria_scores = []
