@@ -173,7 +173,7 @@ class RubricGenerationAgent(BaseAgent[RubricGenerationInput, RubricGenerationOut
             response = self.llm_service.generate(
                 prompt,
                 system_prompt=system_prompt,
-                max_tokens=500,
+                max_tokens=1500,
                 temperature=0.2,
             )
             logger.info(f"LLM response received, length: {len(response)}")

@@ -7,6 +7,7 @@ from typing import Any, Optional
 from src.agents.fairness_agent import FairnessAgent, FairnessInput
 from src.agents.base import AgentContext
 from src.models.schemas import ComponentScore, RankedCandidate, ScreeningScore, Student, FairnessReport
+from bson import ObjectId
 from src.models.scoring import (
     CandidateEvaluation,
     CriterionScore,
@@ -84,6 +85,10 @@ class ScreeningService:
             return []
 
         total = len(applications)
+
+        # Load custom rubric criteria (or fall back to defaults)
+        criteria = await self._load_job_criteria(job)
+
         evaluations = []
 
         step_messages = [
@@ -122,6 +127,7 @@ class ScreeningService:
                 application=app,
                 job=job,
                 resume=resume,
+                criteria=criteria,
             )
             evaluations.append(evaluation)
 
@@ -145,6 +151,7 @@ class ScreeningService:
         application: dict[str, Any],
         job: dict[str, Any],
         resume: Optional[dict[str, Any]],
+        criteria: Optional[list[EvaluationCriterion]] = None,
     ) -> CandidateEvaluation:
         """Evaluate a single candidate.
 
@@ -177,29 +184,25 @@ class ScreeningService:
             job_title=job_title,
         )
 
+        # Use custom criteria if provided, else fall back to defaults
+        active_criteria = criteria or DefaultCriteria.get_all()
+
         # Try LLM-based evaluation if enabled
         llm_succeeded = False
         if self.use_llm and full_text:
             try:
                 criteria_scores, strengths, concerns = await self._evaluate_with_llm(
-                    full_text, qualifications, responsibilities
+                    full_text, qualifications, responsibilities, active_criteria
                 )
-                # Check if LLM actually scored (not all zeros from failed matching)
                 if criteria_scores and any(cs.raw_score > 0 for cs in criteria_scores):
                     evaluation.criteria_scores = criteria_scores
                     evaluation.calculate_totals()
-
-                    # Use strengths/concerns from the LLM evaluation directly
-                    # (skip the separate explanation call to save time)
                     evaluation.strengths = strengths if strengths else self._extract_strengths(criteria_scores, full_text)
                     evaluation.concerns = concerns if concerns else self._extract_concerns(criteria_scores, qualifications)
-
-                    # Build summary from the scores themselves
                     evaluation.detailed_notes = (
                         f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title}. "
                         f"Recommendation: {evaluation.recommendation}."
                     )
-
                     llm_succeeded = True
                     logger.info(f"LLM evaluation for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
                 else:
@@ -207,46 +210,19 @@ class ScreeningService:
             except Exception as e:
                 logger.warning(f"LLM evaluation failed for {candidate_name}, falling back to rule-based: {e}")
 
-        # Fallback to rule-based evaluation (always runs if LLM failed)
+        # Fallback to rule-based evaluation
         if not llm_succeeded:
-            criteria_scores = []
-
-            # 1. Education & Qualifications
-            edu_score = self._score_education(full_text, qualifications)
-            criteria_scores.append(edu_score)
-
-            # 2. Relevant Experience
-            exp_score = self._score_experience(full_text, qualifications)
-            criteria_scores.append(exp_score)
-
-            # 3. Technical Skills
-            tech_score = self._score_technical_skills(full_text, qualifications)
-            criteria_scores.append(tech_score)
-
-            # 4. Industry Knowledge
-            industry_score = self._score_industry_knowledge(full_text, job_title, responsibilities)
-            criteria_scores.append(industry_score)
-
-            # 5. Leadership Experience
-            leadership_score = self._score_leadership(full_text)
-            criteria_scores.append(leadership_score)
-
-            # 6. Communication Skills
-            comm_score = self._score_communication(cover_letter)
-            criteria_scores.append(comm_score)
-
+            criteria_scores = self._rule_based_scores(
+                active_criteria, full_text, cover_letter, qualifications, job_title, responsibilities
+            )
             evaluation.criteria_scores = criteria_scores
             evaluation.calculate_totals()
-
-            # Extract detailed strengths and concerns
             evaluation.strengths = self._extract_strengths(criteria_scores, full_text)
             evaluation.concerns = self._extract_concerns(criteria_scores, qualifications)
-
             evaluation.detailed_notes = (
                 f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title} "
                 f"(rule-based evaluation). Recommendation: {evaluation.recommendation}."
             )
-
             logger.info(f"Rule-based evaluation for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
 
         return evaluation
@@ -256,55 +232,53 @@ class ScreeningService:
         candidate_text: str,
         qualifications: list[str],
         responsibilities: list[str],
+        criteria: list[EvaluationCriterion],
     ) -> tuple[list[CriterionScore], list[str], list[str]]:
-        """Evaluate candidate using LLM.
+        """Evaluate candidate using LLM against the provided criteria.
 
         Args:
             candidate_text: Combined resume and cover letter
             qualifications: Job qualifications
             responsibilities: Job responsibilities
+            criteria: Evaluation criteria (custom rubric or defaults)
 
         Returns:
             Tuple of (criteria_scores, strengths, concerns)
         """
         llm = get_llm_service()
 
-        # Initialize LLM if not done
         if not self._llm_initialized:
             logger.info("Initializing LLM for screening...")
             llm.initialize()
             self._llm_initialized = True
 
-        # Prepare criteria for LLM
-        criteria = [
+        # Build criteria list for LLM prompt from the active rubric
+        criteria_dicts = [
             {"key": c.key, "name": c.name, "weight": c.weight, "description": c.description}
-            for c in DefaultCriteria.get_all()
+            for c in criteria
         ]
 
-        # Get LLM evaluation
         job_requirements = {
             "qualifications": qualifications,
             "responsibilities": responsibilities,
         }
 
-        result = llm.evaluate_candidate(candidate_text, job_requirements, criteria)
+        result = llm.evaluate_candidate(candidate_text, job_requirements, criteria_dicts)
 
-        # Parse LLM response into CriterionScore objects
+        # Parse LLM scores — match back to each criterion
         criteria_scores = []
         llm_scores = result.get("scores", [])
         matched_count = 0
 
-        # Pre-normalize all LLM score criterion names for matching
+        # Pre-normalize LLM score keys for fuzzy matching
         normalized_llm = {}
         for s in llm_scores:
             raw_name = s.get("criterion", "")
             norm_key = raw_name.lower().strip().replace(" ", "_").replace("-", "_").replace("&", "and")
             normalized_llm[norm_key] = s
-            # Also store by raw name for exact match
             normalized_llm[raw_name.lower().strip()] = s
 
-        for criterion in DefaultCriteria.get_all():
-            # Try multiple matching strategies
+        for idx, criterion in enumerate(criteria):
             llm_score = None
             norm_crit = criterion.key.lower()
 
@@ -316,16 +290,15 @@ class ScreeningService:
                 norm_name = criterion.name.lower().replace(" ", "_").replace("&", "and")
                 llm_score = normalized_llm.get(norm_name)
 
-            # Strategy 3: Partial key match (e.g., "technical" matches "technical_skills")
+            # Strategy 3: Partial key match
             if not llm_score:
                 for llm_key, s in normalized_llm.items():
                     if norm_crit in llm_key or llm_key in norm_crit:
                         llm_score = s
                         break
 
-            # Strategy 4: Match by position in the list (if same count)
-            if not llm_score and len(llm_scores) == len(DefaultCriteria.get_all()):
-                idx = list(DefaultCriteria.get_all()).index(criterion)
+            # Strategy 4: Position-based (if same count returned)
+            if not llm_score and len(llm_scores) == len(criteria):
                 if idx < len(llm_scores):
                     llm_score = llm_scores[idx]
                     logger.debug(f"Matched {criterion.key} by position [{idx}]")
@@ -336,7 +309,7 @@ class ScreeningService:
                 matched_count += 1
             else:
                 score = 0
-                evidence = "Not evaluated - criterion not matched in LLM response"
+                evidence = "Criterion not matched in LLM response"
                 logger.warning(f"No LLM score for '{criterion.key}'. Available: {list(normalized_llm.keys())}")
 
             criteria_scores.append(CriterionScore(
@@ -347,12 +320,9 @@ class ScreeningService:
                 evidence=evidence,
             ))
 
-        logger.info(f"LLM criterion matching: {matched_count}/{len(DefaultCriteria.get_all())} matched")
+        logger.info(f"LLM criterion matching: {matched_count}/{len(criteria)} matched")
 
-        strengths = result.get("strengths", [])
-        concerns = result.get("concerns", [])
-
-        return criteria_scores, strengths, concerns
+        return criteria_scores, result.get("strengths", []), result.get("concerns", [])
 
     async def _generate_llm_explanation(
         self,
@@ -1031,3 +1001,136 @@ class ScreeningService:
                 f"Compliant={fairness_report.is_compliant}, "
                 f"DIR={fairness_report.metrics.disparate_impact_ratio:.3f}"
             )
+
+    async def _load_job_criteria(self, job: dict) -> list[EvaluationCriterion]:
+        """Load the custom rubric criteria for a job, or fall back to defaults.
+
+        Args:
+            job: Job document from MongoDB
+
+        Returns:
+            List of EvaluationCriterion objects from the job's rubric, or
+            DefaultCriteria if no rubric is associated with the job.
+        """
+        rubric_id = job.get("rubric_id")
+        if not rubric_id:
+            logger.info(f"Job {job.get('_id')} has no rubric_id — using default criteria")
+            return DefaultCriteria.get_all()
+
+        try:
+            rubric_doc = await self.mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)})
+            if not rubric_doc:
+                logger.warning(f"Rubric {rubric_id} not found — using default criteria")
+                return DefaultCriteria.get_all()
+
+            raw_criteria = rubric_doc.get("criteria", [])
+            if not raw_criteria:
+                logger.warning(f"Rubric {rubric_id} has no criteria — using default criteria")
+                return DefaultCriteria.get_all()
+
+            criteria = [EvaluationCriterion(**c) for c in raw_criteria]
+            logger.info(f"Loaded {len(criteria)} custom criteria from rubric {rubric_id}")
+            return criteria
+        except Exception as e:
+            logger.warning(f"Failed to load rubric {rubric_id}: {e} — using default criteria")
+            return DefaultCriteria.get_all()
+
+    def _rule_based_scores(
+        self,
+        criteria: list[EvaluationCriterion],
+        full_text: str,
+        cover_letter: str,
+        qualifications: list[str],
+        job_title: str,
+        responsibilities: list[str],
+    ) -> list[CriterionScore]:
+        """Score a candidate against the given criteria using rule-based heuristics.
+
+        Routes each criterion key to a dedicated scorer (education, experience,
+        technical_skills, industry_knowledge, leadership, communication) or falls
+        back to a generic keyword scorer for custom criteria keys.
+
+        Args:
+            criteria: Active evaluation criteria (custom rubric or defaults)
+            full_text: Combined resume + cover letter text
+            cover_letter: Cover letter text (for communication scoring)
+            qualifications: Job qualifications list
+            job_title: Job title string
+            responsibilities: Job responsibilities list
+
+        Returns:
+            List of CriterionScore objects with correct key/name/weight per criterion.
+        """
+        scores = []
+        for criterion in criteria:
+            key = criterion.key.lower()
+
+            # Route to dedicated scorer by key pattern; borrow raw_score + evidence
+            if "education" in key or "qualification" in key:
+                base = self._score_education(full_text, qualifications)
+            elif "experience" in key:
+                base = self._score_experience(full_text, qualifications)
+            elif "technical" in key or "skill" in key:
+                base = self._score_technical_skills(full_text, qualifications)
+            elif "industry" in key or "knowledge" in key or "domain" in key:
+                base = self._score_industry_knowledge(full_text, job_title, responsibilities)
+            elif "leadership" in key or "management" in key or "supervisory" in key:
+                base = self._score_leadership(full_text)
+            elif "communication" in key or "writing" in key or "language" in key:
+                base = self._score_communication(cover_letter)
+            else:
+                base = self._score_generic_criterion(full_text, cover_letter, criterion)
+
+            # Always use the active criterion's key/name/weight (not the hardcoded defaults)
+            scores.append(CriterionScore(
+                criterion_key=criterion.key,
+                criterion_name=criterion.name,
+                weight=criterion.weight,
+                raw_score=base.raw_score,
+                evidence=base.evidence,
+            ))
+
+        return scores
+
+    def _score_generic_criterion(
+        self,
+        full_text: str,
+        cover_letter: str,
+        criterion: EvaluationCriterion,
+    ) -> CriterionScore:
+        """Generic keyword-based scorer for criteria without a dedicated scorer.
+
+        Extracts keywords from the criterion name and description and counts
+        how many appear in the candidate text.
+
+        Args:
+            full_text: Combined resume + cover letter text
+            cover_letter: Cover letter text
+            criterion: The evaluation criterion to score against
+
+        Returns:
+            CriterionScore with raw_score and evidence.
+        """
+        text_lower = full_text.lower()
+
+        # Derive keywords from criterion name + description; skip very short words
+        keyword_source = f"{criterion.name} {criterion.description}".lower()
+        keywords = {w for w in re.split(r'\W+', keyword_source) if len(w) > 4}
+        match_count = sum(1 for kw in keywords if kw in text_lower)
+
+        if match_count >= 5:
+            score, evidence = 4, f"Strong match: {match_count} relevant terms found"
+        elif match_count >= 3:
+            score, evidence = 3, f"Good match: {match_count} relevant terms found"
+        elif match_count >= 1:
+            score, evidence = 2, f"Partial match: {match_count} relevant terms found"
+        else:
+            score, evidence = 1, f"No strong indicators for {criterion.name}"
+
+        return CriterionScore(
+            criterion_key=criterion.key,
+            criterion_name=criterion.name,
+            weight=criterion.weight,
+            raw_score=score,
+            evidence=evidence,
+        )
