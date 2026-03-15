@@ -222,7 +222,7 @@ def update_rubric_criterion(rubric_id: str, criterion_key: str):
 
         if "weight" in updates:
             try:
-                updates["weight"] = float(updates["weight"])
+                updates["weight"] = round(float(updates["weight"]), 4)
             except (TypeError, ValueError):
                 return jsonify({"success": False, "error": "weight must be a number"}), 400
 
@@ -250,8 +250,8 @@ def update_rubric_criterion(rubric_id: str, criterion_key: str):
             return jsonify({"success": False, "error": "Criterion not found in rubric"}), 404
 
         # Ensure total weight does not exceed 1.0 (100%)
-        total_weight = sum(float(c.get("weight") or 0.0) for c in criteria)
-        if total_weight > 1.0 + 1e-6:
+        total_weight = round(sum(round(float(c.get("weight") or 0.0), 4) for c in criteria), 4)
+        if total_weight > 1.0:
             return jsonify({
                 "success": False,
                 "error": f"Total weight would be {total_weight * 100:.1f}%. It cannot exceed 100%.",
