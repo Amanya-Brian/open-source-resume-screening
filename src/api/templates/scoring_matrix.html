@@ -2,6 +2,136 @@
 
 {% block title %}Scoring Matrix - Resume Screening Portal{% endblock %}
 
+{% block extra_styles %}
+<style>
+/* ── Modal shell ───────────────────────────────────────── */
+.modal-content {
+    border: none;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.14);
+}
+.modal-header {
+    padding: 1.5rem 1.5rem 0.75rem;
+    border-bottom: none;
+}
+.modal-body {
+    padding: 0.5rem 1.5rem 0.75rem;
+}
+.modal-footer {
+    padding: 0.75rem 1.5rem 1.5rem;
+    border-top: none;
+}
+.modal-subtitle {
+    font-size: .8rem;
+    color: #6c757d;
+    margin-top: 2px;
+    margin-bottom: 0;
+}
+
+/* ── Form fields ───────────────────────────────────────── */
+.field-label {
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6c757d;
+    margin-bottom: 6px;
+    display: block;
+}
+.form-control:focus {
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 3px rgba(82,117,117,.15);
+}
+
+/* ── Modal buttons ─────────────────────────────────────── */
+.btn-modal-save {
+    background: var(--secondary);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    font-family: 'Jost', sans-serif;
+    padding: 9px 22px;
+    border-radius: 8px;
+    font-size: .88rem;
+    letter-spacing: .01em;
+    transition: background .15s ease, box-shadow .15s ease;
+}
+.btn-modal-save:hover:not(:disabled) {
+    background: var(--secondary-dark);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(82,117,117,.28);
+}
+.btn-modal-save:disabled {
+    background: #c8d5d5;
+    color: #fff;
+    cursor: not-allowed;
+    opacity: 1;
+}
+.btn-modal-cancel {
+    background: transparent;
+    border: 1.5px solid #dee2e6;
+    color: #6c757d;
+    font-weight: 500;
+    font-family: 'Jost', sans-serif;
+    padding: 8px 22px;
+    border-radius: 8px;
+    font-size: .88rem;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.btn-modal-cancel:hover {
+    border-color: #adb5bd;
+    color: #212529;
+    background: #f8f9fa;
+}
+.btn-modal-danger {
+    background: #dc3545;
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    font-family: 'Jost', sans-serif;
+    padding: 9px 22px;
+    border-radius: 8px;
+    font-size: .88rem;
+    transition: background .15s ease, box-shadow .15s ease;
+}
+.btn-modal-danger:hover {
+    background: #b02a37;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(220,53,69,.28);
+}
+
+/* ── Rubric action buttons ─────────────────────────────── */
+.rubric-action-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    background: transparent;
+    color: #6c757d;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+    font-size: .85rem;
+}
+.rubric-action-btn:hover {
+    background: #f8f9fa;
+    color: #212529;
+    border-color: #adb5bd;
+}
+.rubric-action-btn.btn-delete {
+    color: #dc3545;
+    border-color: #f5c2c7;
+}
+.rubric-action-btn.btn-delete:hover {
+    background: #fff5f5;
+    border-color: #dc3545;
+    color: #b02a37;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0">
@@ -27,7 +157,7 @@
                         <th>Company</th>
                         <th>Rubric</th>
                         <th style="width: 140px;">Created</th>
-                        <th class="text-end" style="width: 220px;">Actions</th>
+                        <th class="text-end" style="width: 120px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -45,27 +175,38 @@
                         </td>
                         <td>{{ rubric.created_at or '-' }}</td>
                         <td class="text-end">
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-outline-primary me-1"
-                                onclick="viewRubricMatrix('{{ rubric.id }}')"
-                            >
-                                <i class="bi bi-eye me-1"></i>View rubric
-                            </button>
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-outline-secondary me-1"
-                                onclick="openEditRubricModal('{{ rubric.id }}', '{{ rubric.name|escape }}')"
-                            >
-                                <i class="bi bi-pencil-square me-1"></i>Edit
-                            </button>
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-outline-danger"
-                                onclick="openDeleteRubricModal('{{ rubric.id }}', '{{ rubric.name|escape }}')"
-                            >
-                                <i class="bi bi-trash me-1"></i>Delete
-                            </button>
+                            <div class="d-flex align-items-center justify-content-end gap-1">
+                                <button
+                                    type="button"
+                                    class="rubric-action-btn"
+                                    onclick="viewRubricMatrix('{{ rubric.id }}')"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    title="View rubric"
+                                >
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="rubric-action-btn"
+                                    onclick="openEditRubricModal('{{ rubric.id }}', '{{ rubric.name|escape }}')"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    title="Edit rubric"
+                                >
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="rubric-action-btn btn-delete"
+                                    onclick="openDeleteRubricModal('{{ rubric.id }}', '{{ rubric.name|escape }}')"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    title="Delete rubric"
+                                >
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -111,57 +252,81 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-pencil-square me-2"></i>Edit Rubric Criteria
-                </h5>
+                <h5 class="modal-title fw-semibold" style="font-size:.95rem;"
+                    id="rubricEditModalTitle">Edit Rubric</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="rubricEditContent">
-                <div class="text-center py-4">
-                    <div class="spinner-border text-primary mb-3" role="status">
+                <div class="text-center py-5">
+                    <div class="spinner-border mb-3" style="color:var(--secondary);" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="text-muted mb-0">Loading rubric criteria...</p>
+                    <p class="text-muted small mb-0">Loading criteria…</p>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Done</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Edit Criterion Weight Modal -->
-<div class="modal fade" id="criterionWeightModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+<!-- Edit Criterion Modal -->
+<div class="modal fade" id="criterionEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-sliders me-2"></i>Edit Criterion Weight
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header pb-2">
+                <div>
+                    <h5 class="modal-title fw-semibold mb-0" style="font-size:.95rem;">Edit Criterion</h5>
+                </div>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <form>
-                    <div class="mb-3">
-                        <label class="form-label">Criterion</label>
-                        <input type="text" class="form-control" id="criterionWeightName" readonly>
+
+            <div class="modal-body pt-3">
+                <form autocomplete="off" onsubmit="return false;">
+
+                    <!-- Name -->
+                    <div class="mb-4">
+                        <label class="field-label" for="criterionEditName">Name</label>
+                        <input type="text" class="form-control" id="criterionEditName"
+                               placeholder="e.g. Technical Skills"
+                               style="font-size:.88rem;">
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label d-flex justify-content-between">
-                            <span>Weight (%)</span>
-                            <span class="text-muted small" id="criterionWeightTotalHint"></span>
-                        </label>
-                        <input type="number" class="form-control" id="criterionWeightInput" min="0" max="100" step="1">
-                        <div class="form-text">
-                            Total of all criteria weights for this rubric must not exceed 100%.
+
+                    <!-- Description -->
+                    <div class="mb-4">
+                        <label class="field-label" for="criterionEditDescription">Description</label>
+                        <textarea class="form-control" id="criterionEditDescription" rows="3"
+                                  placeholder="What this criterion evaluates…"
+                                  style="font-size:.88rem; resize:none;"></textarea>
+                    </div>
+
+                    <!-- Weight -->
+                    <div>
+                        <div class="d-flex justify-content-between align-items-baseline mb-2">
+                            <label class="field-label mb-0" for="criterionEditWeightInput">Weight</label>
+                            <span class="small text-muted" id="criterionEditWeightHint"
+                                  style="font-size:.76rem;"></span>
                         </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <input type="number" class="form-control" id="criterionEditWeightInput"
+                                   min="0" max="100" step="1" placeholder="0"
+                                   style="max-width:110px;font-size:.88rem;font-weight:600;
+                                          text-align:center;">
+                            <span style="font-size:.88rem;color:#6c757d;font-weight:500;">%</span>
+                        </div>
+                        <p class="form-text mt-2 mb-0" style="font-size:.75rem;">
+                            All criteria weights must total 100% or less.
+                        </p>
                     </div>
+
                 </form>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="criterionWeightSaveBtn" onclick="saveCriterionWeight()">Save</button>
+
+            <div class="modal-footer gap-2 pt-2">
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn-modal-save" id="criterionEditSaveBtn"
+                        onclick="saveCriterion()">Save changes</button>
             </div>
         </div>
     </div>
@@ -169,24 +334,24 @@
 
 <!-- Delete Rubric Modal -->
 <div class="modal fade" id="rubricDeleteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-trash3 me-2"></i>Delete Rubric
-                </h5>
+                <h5 class="modal-title fw-semibold" style="font-size:.95rem;">Delete Rubric</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="mb-2">Are you sure you want to delete this rubric?</p>
-                <p class="fw-semibold mb-1" id="rubricDeleteName"></p>
-                <p class="text-muted small mb-0">
-                    This will remove the rubric definition. Jobs using this rubric will no longer be linked to it.
+                <p class="text-muted small mb-3" style="line-height:1.65;">
+                    This will permanently remove the rubric and unlink it from all associated jobs.
+                    This action cannot be undone.
                 </p>
+                <div style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px 16px;">
+                    <p class="fw-semibold mb-0 small text-truncate" id="rubricDeleteName"></p>
+                </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" onClick="deleteRubric()">Delete (coming soon)</button>
+            <div class="modal-footer gap-2">
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn-modal-danger" onclick="deleteRubric()">Delete Rubric</button>
             </div>
         </div>
     </div>
@@ -199,20 +364,45 @@
 let currentRubricId = null;
 let currentCriterionKey = null;
 let currentCriterionName = null;
+let currentCriterionDescription = '';
 let currentCriterionWeight = 0;
+
+function cleanupBackdrops() {
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+}
+
+// When criterionEditModal is dismissed via X or Cancel (not via saveCriterion),
+// clean up any stray backdrop so the page stays usable.
+document.addEventListener('DOMContentLoaded', () => {
+    const criterionEditModalEl = document.getElementById('criterionEditModal');
+    if (criterionEditModalEl) {
+        criterionEditModalEl.addEventListener('hidden.bs.modal', () => {
+            cleanupBackdrops();
+        });
+    }
+
+    // Initialise Bootstrap tooltips for action buttons
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { trigger: 'hover' });
+    });
+});
 
 async function viewRubricMatrix(rubricId) {
     currentRubricId = rubricId;
     const modalEl = document.getElementById('rubricMatrixViewModal');
-    const modal = new bootstrap.Modal(modalEl);
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     const contentEl = document.getElementById('rubricMatrixViewContent');
+    const titleEl = modalEl.querySelector('.modal-title');
 
     contentEl.innerHTML = `
-        <div class="text-center py-4">
+        <div class="text-center py-5">
             <div class="spinner-border text-primary mb-3" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <p class="text-muted mb-0">Loading rubric...</p>
+            <p class="text-muted mb-0 small">Loading rubric...</p>
         </div>
     `;
     modal.show();
@@ -234,191 +424,104 @@ async function viewRubricMatrix(rubricId) {
         const rubric = data.rubric;
         const criteria = rubric.criteria || [];
         const totalWeight = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
+        const totalPct = Math.round(totalWeight * 100);
+        const isComplete = totalPct === 100;
 
-        const criteriaRows = criteria.map(c => `
+        // Update modal title to actual rubric name
+        if (titleEl) titleEl.textContent = rubric.name || 'Rubric';
+
+        const criteriaRows = criteria.length > 0 ? criteria.map((c, idx) => {
+            const pct = Math.round((c.weight || 0) * 100);
+            return `
             <tr>
-                <td class="fw-semibold">${c.name}</td>
-                <td class="text-center">
-                    <span class="badge bg-primary fs-6">${Math.round((c.weight || 0) * 100)}%</span>
+                <td class="ps-0 text-muted small" style="width:32px;">${idx + 1}</td>
+                <td class="fw-semibold" style="width:200px;">${c.name}</td>
+                <td style="width:110px;">
+                    <div class="d-flex align-items-center gap-2">
+                        <div style="flex:1; height:3px; background:#e9ecef; border-radius:2px;">
+                            <div style="width:${pct}%; height:100%; background:#0d6efd; border-radius:2px;"></div>
+                        </div>
+                        <span class="text-muted small fw-semibold" style="min-width:32px; text-align:right;">${pct}%</span>
+                    </div>
                 </td>
-                <td class="text-muted">${c.description || ''}</td>
-            </tr>
-        `).join('');
+                <td class="text-muted small">${c.description || '—'}</td>
+            </tr>`;
+        }).join('') : `
+            <tr>
+                <td colspan="4" class="text-center text-muted py-4 small">No criteria defined.</td>
+            </tr>`;
+
+        const scoringItems = [
+            { score: 5, label: 'Exceeds requirements significantly', color: '#198754' },
+            { score: 4, label: 'Exceeds requirements',              color: '#20c997' },
+            { score: 3, label: 'Meets requirements',                color: '#0d6efd' },
+            { score: 2, label: 'Partially meets requirements',      color: '#fd7e14' },
+            { score: 1, label: 'Does not meet requirements',        color: '#dc3545' },
+            { score: 0, label: 'Not applicable / No evidence',      color: '#adb5bd' },
+        ].map(s => `
+            <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
+                <span style="width:28px; height:28px; border-radius:6px; background:${s.color}; color:#fff;
+                             display:flex; align-items:center; justify-content:center;
+                             font-weight:700; font-size:.8rem; flex-shrink:0;">${s.score}</span>
+                <span class="small text-secondary">${s.label}</span>
+            </div>`).join('');
+
+        const recommendations = [
+            { range: '90 – 100%', label: 'Strong Yes', action: 'Proceed to Interview', dot: '#198754' },
+            { range: '80 – 89%',  label: 'Yes',        action: 'Proceed to Interview', dot: '#20c997' },
+            { range: '65 – 79%',  label: 'Maybe',      action: 'Hold for Review',      dot: '#fd7e14' },
+            { range: 'Below 65%', label: 'No',         action: 'Reject',               dot: '#dc3545' },
+        ].map(r => `
+            <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
+                <span class="text-muted small" style="width:72px; flex-shrink:0;">${r.range}</span>
+                <span style="width:8px; height:8px; border-radius:50%; background:${r.dot}; flex-shrink:0;"></span>
+                <span class="small"><span class="fw-semibold">${r.label}</span>
+                    <span class="text-muted ms-1">— ${r.action}</span></span>
+            </div>`).join('');
 
         contentEl.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                    <h4 class="mb-1">
-                        <i class="bi bi-journal-text me-2"></i>${rubric.name || 'Rubric'}
-                    </h4>
-                    ${rubric.description ? `<p class="text-muted mb-0">${rubric.description}</p>` : ''}
+            <!-- Rubric header -->
+            <div class="mb-4 pb-3" style="border-bottom:1px solid #e9ecef;">
+                ${rubric.description ? `<p class="text-muted small mb-3">${rubric.description}</p>` : ''}
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing:.06em;">Total Weight</span>
+                    <span class="small fw-bold ${isComplete ? 'text-success' : 'text-warning'}">${totalPct}%</span>
                 </div>
+                <div style="height:5px; background:#e9ecef; border-radius:4px; overflow:hidden;">
+                    <div style="width:${Math.min(totalPct,100)}%; height:100%;
+                                background:${isComplete ? '#198754' : '#fd7e14'};
+                                border-radius:4px; transition:width .4s ease;"></div>
+                </div>
+                ${!isComplete ? `<p class="text-warning small mt-1 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>${100 - totalPct}% of weight is unallocated.</p>` : ''}
             </div>
 
-            <div class="card mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Evaluation Criteria</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="bg-light">
-                                <tr>
-                                    <th>Criterion</th>
-                                    <th class="text-center">Weight</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${criteriaRows || `
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">
-                                            No criteria defined in this rubric.
-                                        </td>
-                                    </tr>
-                                `}
-                            </tbody>
-                            <tfoot class="bg-light">
-                                <tr>
-                                    <td class="fw-bold">Total</td>
-                                    <td class="text-center">
-                                        <span class="badge bg-dark fs-6">
-                                            ${Math.round(totalWeight * 100)}%
-                                        </span>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
+            <!-- Criteria table -->
+            <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Evaluation Criteria</p>
+            <div class="table-responsive mb-4">
+                <table class="table align-middle mb-0" style="border-top:none;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #e9ecef;">
+                            <th class="ps-0 text-muted fw-normal small pb-2" style="width:32px;">#</th>
+                            <th class="text-muted fw-normal small pb-2">Criterion</th>
+                            <th class="text-muted fw-normal small pb-2" style="width:110px;">Weight</th>
+                            <th class="text-muted fw-normal small pb-2">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${criteriaRows}
+                    </tbody>
+                </table>
             </div>
 
-            <!-- Scoring Scale (static copy for modal) -->
-            <div class="row">
-                <div class="col-lg-8">
-                    <div class="card mb-4">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0"><i class="bi bi-rulers me-2"></i>Scoring Scale (0-5)</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-hover mb-0">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th class="text-center" style="width: 80px;">Score</th>
-                                            <th>Description</th>
-                                            <th style="width: 200px;">Visual</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-success fs-5">5</span></td>
-                                            <td>Exceeds requirements significantly</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-success" style="width: 100%">100%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-success fs-5">4</span></td>
-                                            <td>Exceeds requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-success" style="width: 80%">80%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-primary fs-5">3</span></td>
-                                            <td>Meets requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-primary" style="width: 60%">60%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-warning text-dark fs-5">2</span></td>
-                                            <td>Partially meets requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-warning" style="width: 40%">40%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-danger fs-5">1</span></td>
-                                            <td>Does not meet requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-danger" style="width: 20%">20%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-secondary fs-5">0</span></td>
-                                            <td>Not applicable / No evidence</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-secondary" style="width: 0%"></div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
+            <!-- Scoring + Recommendations -->
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Scoring Scale (0 – 5)</p>
+                    <div>${scoringItems}</div>
                 </div>
-                <div class="col-lg-4">
-                    <div class="card mb-4">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0"><i class="bi bi-signpost-split me-2"></i>Recommendations</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #dcfce7;">
-                                <div class="me-3">
-                                    <i class="bi bi-star-fill text-success" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-success">STRONG YES - Interview</div>
-                                    <div class="text-muted small">Score: 90% - 100%</div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #bbf7d0;">
-                                <div class="me-3">
-                                    <i class="bi bi-check-circle-fill text-success" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-success">YES - Interview</div>
-                                    <div class="text-muted small">Score: 80% - 89%</div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #fef3c7;">
-                                <div class="me-3">
-                                    <i class="bi bi-question-circle-fill text-warning" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-warning">Maybe - Hold</div>
-                                    <div class="text-muted small">Score: 65% - 79%</div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center p-3 rounded" style="background-color: #fecaca;">
-                                <div class="me-3">
-                                    <i class="bi bi-x-circle-fill text-danger" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-danger">No - Reject</div>
-                                    <div class="text-muted small">Score: Below 65%</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div class="col-md-6">
+                    <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Outcome Thresholds</p>
+                    <div>${recommendations}</div>
                 </div>
             </div>
         `;
@@ -435,7 +538,7 @@ async function viewRubricMatrix(rubricId) {
 async function openEditRubricModal(rubricId, rubricName) {
     currentRubricId = rubricId;
     const modalEl = document.getElementById('rubricEditModal');
-    const modal = new bootstrap.Modal(modalEl);
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     const contentEl = document.getElementById('rubricEditContent');
 
     contentEl.innerHTML = `
@@ -464,51 +567,87 @@ async function openEditRubricModal(rubricId, rubricName) {
 
         const rubric = data.rubric;
         const criteria = rubric.criteria || [];
+        const totalWeight = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
+        const totalPct = Math.round(totalWeight * 100);
+        const isComplete = totalPct === 100;
 
-        const rows = criteria.map((c, idx) => `
-            <tr>
-                <td class="text-center">${idx + 1}</td>
-                <td class="fw-semibold">${c.name}</td>
-                <td class="text-center">${Math.round((c.weight || 0) * 100)}%</td>
-                <td class="text-muted">${c.description || ''}</td>
-                <td class="text-end">
-                    <button type="button"
-                            class="btn btn-sm btn-outline-primary"
-                            onclick="editCriterionWeight('${rubricId}', '${c.key}', ${Math.round((c.weight || 0) * 100)}, '${c.name.replace("'", "\\'")}')">
-                        <i class="bi bi-pencil me-1"></i>Edit weight
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        // Update modal title to rubric name
+        const titleEl = document.getElementById('rubricEditModalTitle');
+        if (titleEl) titleEl.textContent = rubric.name || rubricName || 'Edit Rubric';
 
-        contentEl.innerHTML = `
-            <h6 class="mb-3">Rubric: ${rubric.name || rubricName || 'Rubric'}</h6>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="bg-light">
-                        <tr>
-                            <th style="width: 50px;" class="text-center">#</th>
-                            <th>Criterion</th>
-                            <th class="text-center" style="width: 90px;">Weight</th>
-                            <th>Description</th>
-                            <th style="width: 150px;" class="text-end">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows || `
-                            <tr>
-                                <td colspan="5" class="text-center text-muted py-3">
-                                    No criteria defined in this rubric.
-                                </td>
-                            </tr>
-                        `}
-                    </tbody>
-                </table>
-            </div>
-            <p class="text-muted small mt-3 mb-0">
-                Click "Edit weight" in the table above to adjust individual criterion weights.
-            </p>
-        `;
+        const rows = criteria.length > 0 ? criteria.map((c, idx) => {
+            const weightPercent = Math.round((c.weight || 0) * 100);
+            const otherWeightsPercent = Math.round((totalWeight - (c.weight || 0)) * 100);
+            const safeName = c.name.replace(/'/g, "\\'");
+            const safeDesc = (c.description || '').replace(/'/g, "\\'");
+            return `
+            <div style="display:flex;align-items:center;gap:14px;padding:13px 0;
+                        border-bottom:1px solid #f1f3f5;">
+                <!-- Index -->
+                <span style="width:26px;height:26px;border-radius:7px;background:#f1f3f5;
+                             display:flex;align-items:center;justify-content:center;
+                             font-size:.72rem;font-weight:700;color:#6c757d;flex-shrink:0;">
+                    ${idx + 1}
+                </span>
+
+                <!-- Name + description -->
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:.88rem;
+                                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${c.name}
+                    </div>
+                    ${c.description ? `
+                    <div style="font-size:.76rem;color:#6c757d;margin-top:2px;
+                                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        ${c.description}
+                    </div>` : ''}
+                </div>
+
+                <!-- Weight % -->
+                <span style="flex-shrink:0;font-size:.8rem;font-weight:700;
+                             color:var(--secondary-dark);min-width:36px;text-align:right;">
+                    ${weightPercent}%
+                </span>
+
+                <!-- Edit icon button -->
+                <button type="button"
+                        class="rubric-action-btn"
+                        style="flex-shrink:0;"
+                        onclick="openEditCriterionModal('${rubricId}', '${c.key}', ${weightPercent}, '${safeName}', '${safeDesc}', ${otherWeightsPercent})"
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Edit criterion">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            </div>`;
+        }).join('') : `
+            <p class="text-center text-muted py-4 mb-0 small">No criteria defined in this rubric.</p>`;
+
+        // Total weight summary
+        const summary = `
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid #e9ecef;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:.72rem;font-weight:600;text-transform:uppercase;
+                                 letter-spacing:.06em;color:#6c757d;">Total Weight</span>
+                    <span style="font-size:.82rem;font-weight:700;
+                                 color:${isComplete ? '#198754' : '#fd7e14'};">${totalPct}%</span>
+                </div>
+                <div style="height:4px;background:#e9ecef;border-radius:4px;overflow:hidden;">
+                    <div style="width:${Math.min(totalPct,100)}%;height:100%;border-radius:4px;
+                                background:${isComplete ? '#198754' : '#fd7e14'};
+                                transition:width .3s ease;">
+                    </div>
+                </div>
+                ${!isComplete ? `
+                <p style="font-size:.74rem;color:#fd7e14;margin-top:5px;margin-bottom:0;">
+                    ${100 - totalPct}% unallocated — weights should total 100% for accurate scoring.
+                </p>` : ''}
+            </div>`;
+
+        contentEl.innerHTML = `<div>${rows}</div>${summary}`;
+
+        // Re-init tooltips for newly rendered edit buttons
+        contentEl.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            new bootstrap.Tooltip(el, { trigger: 'hover' });
+        });
     } catch (error) {
         contentEl.innerHTML = `
             <div class="alert alert-danger mb-0">
@@ -527,35 +666,59 @@ function openDeleteRubricModal(rubricId, rubricName) {
         nameEl.textContent = rubricName || 'Selected rubric';
     }
     const modalEl = document.getElementById('rubricDeleteModal');
-    const modal = new bootstrap.Modal(modalEl);
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
 }
 
-function editCriterionWeight(rubricId, criterionKey, currentWeightPercent, criterionName) {
+function openEditCriterionModal(rubricId, criterionKey, currentWeightPercent, criterionName, criterionDescription, otherWeightsPercent) {
     currentRubricId = rubricId;
     currentCriterionKey = criterionKey;
     currentCriterionName = criterionName || criterionKey;
+    currentCriterionDescription = criterionDescription || '';
     currentCriterionWeight = currentWeightPercent;
 
-    const nameEl = document.getElementById('criterionWeightName');
-    const inputEl = document.getElementById('criterionWeightInput');
-    const totalHintEl = document.getElementById('criterionWeightTotalHint');
-    const saveBtn = document.getElementById('criterionWeightSaveBtn');
+    const maxAllowed = 100 - (otherWeightsPercent || 0);
+
+    const nameEl = document.getElementById('criterionEditName');
+    const descEl = document.getElementById('criterionEditDescription');
+    const inputEl = document.getElementById('criterionEditWeightInput');
+    const hintEl = document.getElementById('criterionEditWeightHint');
+    const saveBtn = document.getElementById('criterionEditSaveBtn');
 
     if (nameEl) nameEl.value = currentCriterionName;
-    if (inputEl) inputEl.value = currentCriterionWeight;
-    if (totalHintEl) {
-        totalHintEl.textContent = `Current weight: ${currentCriterionWeight}%`;
-        totalHintEl.classList.remove('text-danger');
+    if (descEl) descEl.value = currentCriterionDescription;
+    if (inputEl) {
+        inputEl.value = currentCriterionWeight;
+        inputEl.max = maxAllowed;
+        // Remove any old listener before adding a new one
+        inputEl.oninput = () => {
+            const val = Number(inputEl.value);
+            if (!Number.isNaN(val) && hintEl) {
+                const wouldBe = (otherWeightsPercent || 0) + val;
+                if (wouldBe > 100) {
+                    hintEl.textContent = `Total would be ${wouldBe}% — max allowed is ${maxAllowed}%`;
+                    hintEl.classList.add('text-danger');
+                    if (saveBtn) saveBtn.disabled = true;
+                } else {
+                    hintEl.textContent = `Available: ${maxAllowed}% — total would be ${wouldBe}%`;
+                    hintEl.classList.remove('text-danger');
+                    if (saveBtn) saveBtn.disabled = false;
+                }
+            }
+        };
+    }
+    if (hintEl) {
+        hintEl.textContent = `Available: ${maxAllowed}% (other criteria use ${otherWeightsPercent || 0}%)`;
+        hintEl.classList.remove('text-danger');
     }
     if (saveBtn) saveBtn.disabled = false;
 
-    const modalEl = document.getElementById('criterionWeightModal');
-    const modal = new bootstrap.Modal(modalEl);
+    const modalEl = document.getElementById('criterionEditModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
 }
 
-async function saveCriterionWeight() {
+async function saveCriterion() {
     if (!currentRubricId || !currentCriterionKey) {
         if (typeof showToast === 'function') {
             showToast('No criterion selected to update.', 'error');
@@ -563,59 +726,83 @@ async function saveCriterionWeight() {
         return;
     }
 
-    const inputEl = document.getElementById('criterionWeightInput');
-    const totalHintEl = document.getElementById('criterionWeightTotalHint');
-    const modalEl = document.getElementById('criterionWeightModal');
-    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    const nameEl = document.getElementById('criterionEditName');
+    const descEl = document.getElementById('criterionEditDescription');
+    const weightEl = document.getElementById('criterionEditWeightInput');
+    const hintEl = document.getElementById('criterionEditWeightHint');
+    const modalEl = document.getElementById('criterionEditModal');
+    const modal = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
 
-    const newWeightStr = inputEl ? inputEl.value : '';
-    const newWeight = Number(newWeightStr);
-    if (Number.isNaN(newWeight) || newWeight < 0 || newWeight > 100) {
+    const newName = nameEl ? nameEl.value.trim() : '';
+    const newDescription = descEl ? descEl.value.trim() : '';
+    const newWeight = Number(weightEl ? weightEl.value : '');
+
+    if (!newName) {
         if (typeof showToast === 'function') {
-            showToast('Please enter a valid weight between 0 and 100.', 'error');
+            showToast('Criterion name cannot be empty.', 'error');
         } else {
-            alert('Please enter a valid weight between 0 and 100.');
+            alert('Criterion name cannot be empty.');
         }
         return;
     }
 
+    const maxAllowed = Number(weightEl ? weightEl.max : 100);
+    if (Number.isNaN(newWeight) || newWeight < 0 || newWeight > maxAllowed) {
+        const msg = newWeight > maxAllowed
+            ? `Weight cannot exceed ${maxAllowed}% (other criteria already use ${100 - maxAllowed}%).`
+            : 'Please enter a valid weight between 0 and 100.';
+        if (typeof showToast === 'function') {
+            showToast(msg, 'error');
+        } else {
+            alert(msg);
+        }
+        return;
+    }
+
+    // Use integer rounding before dividing to avoid float precision drift (e.g. 33/100 = 0.33000000000000002)
+    const weightDecimal = Math.round(newWeight) / 100;
+
     try {
         const response = await fetch(`/api/rubrics/${currentRubricId}/criteria/${currentCriterionKey}`, {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ weight: newWeight / 100 }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: newName,
+                description: newDescription,
+                weight: weightDecimal,
+            }),
         });
         const data = await response.json();
 
         if (!data.success) {
-            if (data.error && data.error.includes('Total weight would be')) {
-                if (totalHintEl) {
-                    totalHintEl.textContent = data.error;
-                    totalHintEl.classList.add('text-danger');
-                }
+            if (hintEl) {
+                hintEl.textContent = data.error || 'Update failed.';
+                hintEl.classList.add('text-danger');
             }
             if (typeof showToast === 'function') {
-                showToast(data.error || 'Failed to update criterion weight.', 'error');
+                showToast(data.error || 'Failed to update criterion.', 'error');
             } else {
-                alert(data.error || 'Failed to update criterion weight.');
+                alert(data.error || 'Failed to update criterion.');
             }
             return;
         }
 
         if (typeof showToast === 'function') {
-            showToast('Criterion weight updated.', 'success');
+            showToast('Criterion updated successfully.', 'success');
         }
+        // Wait for the hide animation to fully complete before reopening the parent modal,
+        // otherwise Bootstrap leaves a stray backdrop and locks the page.
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            cleanupBackdrops();
+            openEditRubricModal(currentRubricId, data.rubric?.name || '');
+        }, { once: true });
         modal.hide();
-        // Reload the rubric criteria view to reflect new weights
-        openEditRubricModal(currentRubricId, data.rubric?.name || '');
     } catch (error) {
-        console.error('Error updating criterion weight', error);
+        console.error('Error updating criterion', error);
         if (typeof showToast === 'function') {
-            showToast(`Error updating criterion weight: ${error.message}`, 'error');
+            showToast(`Error updating criterion: ${error.message}`, 'error');
         } else {
-            alert(`Error updating criterion weight: ${error.message}`);
+            alert(`Error updating criterion: ${error.message}`);
         }
     }
 }
@@ -629,7 +816,7 @@ async function deleteRubric() {
     }
 
     const modalEl = document.getElementById('rubricDeleteModal');
-    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    const modal = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
 
     try {
         const response = await fetch(`/api/rubrics/${currentRubricId}`, {

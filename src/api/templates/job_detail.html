@@ -2,6 +2,49 @@
 
 {% block title %}{{ job.title }} - Resume Screening Portal{% endblock %}
 
+{% block extra_styles %}
+<style>
+.btn-action-primary {
+    background: var(--secondary);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    font-family: 'Jost', sans-serif;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: .9rem;
+    letter-spacing: .015em;
+    transition: background .15s ease, box-shadow .15s ease;
+}
+.btn-action-primary:hover:not(:disabled) {
+    background: var(--secondary-dark);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(82,117,117,.28);
+}
+.btn-action-primary:disabled {
+    background: #c8d5d5;
+    color: #fff;
+    cursor: not-allowed;
+    opacity: 1;
+}
+.btn-action-secondary {
+    background: transparent;
+    border: 1.5px solid var(--secondary);
+    color: var(--secondary);
+    font-weight: 500;
+    font-family: 'Jost', sans-serif;
+    padding: 9px 20px;
+    border-radius: 8px;
+    font-size: .9rem;
+    transition: background .15s ease, color .15s ease;
+}
+.btn-action-secondary:hover {
+    background: var(--secondary);
+    color: #fff;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <nav aria-label="breadcrumb" class="mb-4">
     <ol class="breadcrumb">
@@ -34,25 +77,46 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="col-md-4 text-end d-flex flex-column align-items-stretch gap-2">
+            <div class="col-md-4 d-flex flex-column gap-2">
                 {% if not results %}
-                <button class="btn btn-screen btn-lg w-100" onclick="runScreening('{{ job.id }}')">
-                    <span class="loading-spinner spinner-border spinner-border-sm me-2"></span>
-                    <i class="bi bi-play-fill me-1"></i> Run Screening
+                <button
+                    class="btn btn-action-primary w-100"
+                    {% if not job.has_rubric %}
+                        disabled
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="left"
+                        title="A rubric must be generated before screening"
+                    {% else %}
+                        onclick="runScreening('{{ job.id }}')"
+                    {% endif %}>
+                    <i class="bi bi-person-check-fill me-2"></i>Run Screening
                 </button>
                 {% else %}
-                <button class="btn btn-outline-primary btn-lg w-100" onclick="runScreening('{{ job.id }}')">
-                    <i class="bi bi-arrow-repeat me-1"></i> Re-Screen
+                <button
+                    class="btn btn-action-primary w-100"
+                    {% if not job.has_rubric %}
+                        disabled
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="left"
+                        title="A rubric must be generated before screening"
+                    {% else %}
+                        onclick="runScreening('{{ job.id }}')"
+                    {% endif %}>
+                    <i class="bi bi-arrow-clockwise me-2"></i>Re-Screen Candidates
                 </button>
                 {% endif %}
+
                 {% if job.has_rubric %}
-                <button class="btn btn-outline-secondary btn-lg w-100" onclick="viewRubric('{{ job.id }}')">
-                    <i class="bi bi-journal-text me-1"></i> View Rubric
+                <button class="btn btn-action-secondary w-100" onclick="viewRubric('{{ job.id }}')">
+                    <i class="bi bi-file-earmark-text me-2"></i>View Rubric
                 </button>
                 {% else %}
-                <button class="btn btn-outline-secondary btn-lg w-100" onclick="generateRubric('{{ job.id }}')">
-                    <i class="bi bi-magic me-1"></i> Generate Rubric
+                <button class="btn btn-action-secondary w-100" onclick="generateRubric('{{ job.id }}')">
+                    <i class="bi bi-file-earmark-ruled me-2"></i>Generate Rubric
                 </button>
+                <p class="text-muted mb-0 mt-1" style="font-size:.78rem; text-align:right;">
+                    <i class="bi bi-info-circle me-1"></i>A rubric is required before screening
+                </p>
                 {% endif %}
             </div>
         </div>
@@ -280,27 +344,47 @@
         </div>
     </div>
 </div>
+
 <!-- Rubric Generation Modal -->
-<div class="modal fade" id="rubricModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-journal-text me-2"></i>Generating Rubric
-                </h5>
-            </div>
-            <div class="modal-body">
-                <div class="text-center py-3">
-                    <div class="spinner-border text-primary mb-3" role="status">
-                        <span class="visually-hidden">Loading...</span>
+<div class="modal fade" id="rubricModal" tabindex="-1" data-bs-keyboard="false" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
+        <div class="modal-content" style="border:none;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.14);">
+            <div class="modal-header align-items-start" style="border-bottom:none;padding:1.5rem 1.5rem 0.5rem;">
+                <div class="d-flex align-items-center gap-3 flex-grow-1">
+                    <div id="rubricIconBox" style="width:44px;height:44px;border-radius:12px;background:#f0f5f5;
+                         display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="bi bi-file-earmark-ruled" style="font-size:1.2rem;color:var(--secondary);"></i>
                     </div>
-                    <p class="mb-2" id="rubricStatus">Starting rubric generation...</p>
+                    <div>
+                        <h5 class="fw-semibold mb-0" style="font-size:1rem;">Generating Rubric</h5>
+                        <p class="mb-0" id="rubricStatus"
+                           style="font-size:.82rem;color:#6c757d;margin-top:2px;">Starting, please wait…</p>
+                    </div>
                 </div>
-                <div id="rubricSteps" class="text-start small"></div>
+                <button type="button" class="btn-close flex-shrink-0 ms-2"
+                        id="rubricModalClose" data-bs-dismiss="modal"
+                        aria-label="Close" disabled></button>
+            </div>
+            <div class="modal-body" style="padding:.75rem 1.5rem 1.75rem;">
+                <!-- Indeterminate bar shown while processing -->
+                <div id="rubricProgressBar" style="height:4px;background:#e9ecef;border-radius:4px;overflow:hidden;margin-bottom:1rem;">
+                    <div style="height:100%;width:100%;background:var(--secondary);border-radius:4px;
+                                animation:progressPulse 1.6s ease-in-out infinite;"></div>
+                </div>
+                <!-- Steps list populated by JS -->
+                <div id="rubricSteps"></div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+@keyframes progressPulse {
+    0%   { opacity: 1; }
+    50%  { opacity: .35; }
+    100% { opacity: 1; }
+}
+</style>
 <!-- Rubric View Modal -->
 <div class="modal fade" id="rubricViewModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -327,7 +411,21 @@
 {% block extra_scripts %}
 <script>
 async function runScreening(jobId) {
-    const modal = new bootstrap.Modal(document.getElementById('screeningModal'));
+    const modalEl = document.getElementById('screeningModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const statusEl = document.getElementById('screeningStatus');
+    const closeBtn = document.getElementById('screeningModalClose');
+    const iconBox  = document.getElementById('screeningIconBox');
+    const bar      = document.getElementById('screeningBar');
+
+    // Reset state
+    statusEl.textContent = 'Evaluating candidates, please wait…';
+    statusEl.style.color = '#6c757d';
+    iconBox.style.background = '#f0f5f5';
+    iconBox.innerHTML = '<i class="bi bi-person-check-fill" style="font-size:1.2rem;color:var(--secondary);"></i>';
+    bar.style.animation = 'progressPulse 1.6s ease-in-out infinite';
+    bar.style.background = 'var(--secondary)';
+    closeBtn.disabled = true;
     modal.show();
 
     const progress  = document.getElementById('screeningProgress');
@@ -407,78 +505,87 @@ async function runScreening(jobId) {
 }
 
 async function generateRubric(jobId) {
-    const modalEl = document.getElementById('rubricModal');
-    const modal = new bootstrap.Modal(modalEl);
+    const modalEl  = document.getElementById('rubricModal');
+    const modal    = bootstrap.Modal.getOrCreateInstance(modalEl);
     const statusEl = document.getElementById('rubricStatus');
-    const stepsEl = document.getElementById('rubricSteps');
+    const stepsEl  = document.getElementById('rubricSteps');
+    const closeBtn = document.getElementById('rubricModalClose');
+    const iconBox  = document.getElementById('rubricIconBox');
+    const barWrap  = document.getElementById('rubricProgressBar');
 
-    statusEl.innerHTML = 'Starting rubric generation...';
+    const stepLabels = {
+        load_job:           'Loading job details',
+        rubric_exists:      'Checking existing rubric',
+        generate_rubric:    'Generating with AI',
+        save_rubric:        'Saving rubric',
+        link_rubric_to_job: 'Linking to job',
+    };
+
+    const buildStepsHtml = (steps) => {
+        if (!Array.isArray(steps) || steps.length === 0) return '';
+        return steps.map(step => {
+            const status = step.status || 'in_progress';
+            const label  = stepLabels[step.step] || step.step.replace(/_/g, ' ');
+            const dot = status === 'completed'
+                ? `<div style="width:20px;height:20px;border-radius:50%;background:#198754;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                       <i class="bi bi-check" style="color:#fff;font-size:.65rem;font-weight:700;"></i>
+                   </div>`
+                : status === 'failed'
+                ? `<div style="width:20px;height:20px;border-radius:50%;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                       <i class="bi bi-x" style="color:#fff;font-size:.75rem;font-weight:700;"></i>
+                   </div>`
+                : `<div style="width:20px;height:20px;border-radius:50%;background:#dee2e6;flex-shrink:0;"></div>`;
+
+            const textColor = status === 'failed' ? '#dc3545' : status === 'completed' ? '#198754' : '#6c757d';
+            return `
+                <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
+                    ${dot}
+                    <span class="small text-capitalize" style="color:${textColor};">${label}</span>
+                    ${step.message ? `<span class="ms-auto small text-muted" style="font-size:.75rem;">${step.message}</span>` : ''}
+                </div>`;
+        }).join('');
+    };
+
+    // Reset
+    statusEl.textContent = 'Starting, please wait…';
+    statusEl.style.color = '#6c757d';
     stepsEl.innerHTML = '';
+    iconBox.style.background = '#f0f5f5';
+    iconBox.innerHTML = '<i class="bi bi-file-earmark-ruled" style="font-size:1.2rem;color:var(--secondary);"></i>';
+    barWrap.style.display = 'block';
+    closeBtn.disabled = true;
     modal.show();
 
     try {
         const response = await fetch(`/api/rubrics/jobs/${jobId}/generate`, { method: 'POST' });
         const data = await response.json();
 
-        const buildStepsHtml = (steps) => {
-            if (!Array.isArray(steps) || steps.length === 0) {
-                return '';
-            }
-            let html = '<ul class="list-unstyled mb-0">';
-            for (const step of steps) {
-                const status = step.status || 'in_progress';
-                let icon = 'bi-hourglass-split text-secondary';
-                let badgeClass = 'badge bg-secondary';
-                if (status === 'completed') {
-                    icon = 'bi-check-circle-fill text-success';
-                    badgeClass = 'badge bg-success';
-                } else if (status === 'failed') {
-                    icon = 'bi-x-circle-fill text-danger';
-                    badgeClass = 'badge bg-danger';
-                }
-                html += `
-                    <li class="mb-1 d-flex align-items-center">
-                        <i class="bi ${icon} me-2"></i>
-                        <span class="me-2 text-capitalize">${step.step || ''}</span>
-                        <span class="${badgeClass} text-capitalize">${status}</span>
-                        ${step.message ? `<span class="ms-2 text-muted">${step.message}</span>` : ''}
-                    </li>
-                `;
-            }
-            html += '</ul>';
-            return html;
-        };
+        barWrap.style.display = 'none';
+        stepsEl.innerHTML = buildStepsHtml(data.steps);
 
         if (data.success) {
-            statusEl.innerHTML = `
-                <i class="bi bi-check-circle text-success me-2"></i>
-                Rubric generated successfully.
-            `;
-            stepsEl.innerHTML = buildStepsHtml(data.steps);
-            if (typeof showToast === 'function') {
-                showToast('Rubric generated successfully.', 'success');
-            }
-            // Optional: refresh after a short delay so UI can use the new rubric
-            setTimeout(() => {
-                modal.hide();
-                location.reload();
-            }, 1800);
+            iconBox.style.background = '#f0fdf4';
+            iconBox.innerHTML = '<i class="bi bi-check-circle-fill" style="font-size:1.2rem;color:#198754;"></i>';
+            statusEl.textContent = 'Rubric generated successfully.';
+            statusEl.style.color = '#198754';
+            if (typeof showToast === 'function') showToast('Rubric generated successfully.', 'success');
+            setTimeout(() => { modal.hide(); location.reload(); }, 1800);
         } else {
             const message = data.error || data.message || 'Rubric generation failed.';
-            statusEl.innerHTML = `
-                <i class="bi bi-x-circle text-danger me-2"></i>
-                ${message}
-            `;
-            stepsEl.innerHTML = buildStepsHtml(data.steps);
-            if (typeof showToast === 'function') {
-                showToast(message, 'error');
-            }
+            iconBox.style.background = '#fff5f5';
+            iconBox.innerHTML = '<i class="bi bi-x-circle-fill" style="font-size:1.2rem;color:#dc3545;"></i>';
+            statusEl.textContent = message;
+            statusEl.style.color = '#dc3545';
+            closeBtn.disabled = false;
+            if (typeof showToast === 'function') showToast(message, 'error');
         }
     } catch (error) {
-        statusEl.innerHTML = `
-            <i class="bi bi-x-circle text-danger me-2"></i>
-            Error: ${error.message}
-        `;
+        barWrap.style.display = 'none';
+        iconBox.style.background = '#fff5f5';
+        iconBox.innerHTML = '<i class="bi bi-x-circle-fill" style="font-size:1.2rem;color:#dc3545;"></i>';
+        statusEl.textContent = `Error: ${error.message}`;
+        statusEl.style.color = '#dc3545';
+        closeBtn.disabled = false;
     }
 }
 
@@ -920,6 +1027,13 @@ async function loadFairnessReport(jobId) {
         `;
     }
 }
+
+// Initialise tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { trigger: 'hover' });
+    });
+});
 
 // Auto-load fairness report if results exist
 {% if results %}
