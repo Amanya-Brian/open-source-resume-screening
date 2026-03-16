@@ -1,5 +1,6 @@
 """Screening service for evaluating candidates from MongoDB."""
 
+import asyncio
 import logging
 import re
 from typing import Any, Optional
@@ -53,11 +54,17 @@ class ScreeningService:
     async def screen_job_candidates(
         self,
         job_id: str,
+        progress_callback=None,
     ) -> list[CandidateEvaluation]:
         """Screen all candidates for a job.
 
+        Fetches all applications in one query, then evaluates each
+        candidate one by one (resume fetch + LLM call per candidate).
+
         Args:
             job_id: Job listing ID
+            progress_callback: Optional callable(current, total, candidate_name, message)
+                called before each candidate is evaluated
 
         Returns:
             List of candidate evaluations, sorted by score
@@ -67,7 +74,7 @@ class ScreeningService:
         if not job:
             raise ValueError(f"Job not found: {job_id}")
 
-        # Fetch applications for this job
+        # Fetch ALL applications in one query
         applications = await self.mongo.find_many(
             "applications",
             {"job_id": job_id}
@@ -77,21 +84,56 @@ class ScreeningService:
             logger.warning(f"No applications found for job {job_id}")
             return []
 
-        evaluations = []
+        total = len(applications)
 
-        for app in applications:
-            # Fetch resume/cover letter
-            resume = await self.mongo.find_one(
-                "resumes",
-                {"student_id": app.get("student_id")}
-            )
+        step_messages = [
+            "Parsing resume...",
+            "Extracting skills...",
+            "Evaluating experience...",
+            "Matching to job requirements...",
+            "Applying scoring model...",
+            "Identifying key achievements...",
+            "Assessing technical competencies...",
+            "Reviewing professional background...",
+            "Generating final recommendation...",
+            "Ensuring fair evaluation...",
+        ]
 
-            evaluation = await self._evaluate_candidate(
-                application=app,
-                job=job,
-                resume=resume,
-            )
-            evaluations.append(evaluation)
+        # Pre-initialize LLM once before any candidate evaluation (avoids cold-start on first candidate)
+        if self.use_llm:
+            try:
+                get_llm_service().initialize()
+                self._llm_initialized = True
+            except Exception as e:
+                logger.warning(f"LLM pre-initialization failed: {e} — will use rule-based scoring")
+
+        # Batch-fetch ALL resumes in one query instead of N individual queries
+        student_ids = [app.get("student_id") for app in applications if app.get("student_id")]
+        if student_ids:
+            all_resumes = await self.mongo.find_many("resumes", {"student_id": {"$in": student_ids}})
+            resume_map = {r["student_id"]: r for r in all_resumes}
+        else:
+            resume_map = {}
+        logger.info(f"Pre-fetched {len(resume_map)}/{total} resumes")
+
+        # Evaluate candidates concurrently — limits to 3 simultaneous to avoid overwhelming Ollama
+        _sem = asyncio.Semaphore(3)
+
+        async def _evaluate_one(idx: int, app: dict) -> CandidateEvaluation:
+            async with _sem:
+                candidate_name = (
+                    f"{app.get('student_firstname', '')} {app.get('student_lastname', '')}".strip()
+                    or "Unknown"
+                )
+                if progress_callback:
+                    try:
+                        progress_callback(idx, total, candidate_name, step_messages[idx % len(step_messages)])
+                    except Exception:
+                        pass
+                resume = resume_map.get(app.get("student_id"))
+                return await self._evaluate_candidate(application=app, job=job, resume=resume)
+
+        evaluations = list(await asyncio.gather(*[_evaluate_one(i, app) for i, app in enumerate(applications)]))
 
         # Sort by total weighted score (descending)
         evaluations.sort(key=lambda e: e.total_weighted_score, reverse=True)
@@ -255,7 +297,8 @@ class ScreeningService:
             "responsibilities": responsibilities,
         }
 
-        result = llm.evaluate_candidate(candidate_text, job_requirements, criteria)
+        # Run the blocking requests.post call in a thread so the event loop stays free
+        result = await asyncio.to_thread(llm.evaluate_candidate, candidate_text, job_requirements, criteria)
 
         # Parse LLM response into CriterionScore objects
         criteria_scores = []

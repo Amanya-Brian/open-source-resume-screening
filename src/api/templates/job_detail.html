@@ -318,33 +318,28 @@
 {% endif %}
 
 <!-- Screening Modal -->
-<div class="modal fade" id="screeningModal" tabindex="-1" data-bs-keyboard="false" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
-        <div class="modal-content" style="border:none;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.14);">
-            <div class="modal-header align-items-start" style="border-bottom:none;padding:1.5rem 1.5rem 0.5rem;">
-                <div class="d-flex align-items-center gap-3 flex-grow-1">
-                    <div id="screeningIconBox" style="width:44px;height:44px;border-radius:12px;background:#f0f5f5;
-                         display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                        <i class="bi bi-person-check-fill" style="font-size:1.2rem;color:var(--secondary);"></i>
-                    </div>
-                    <div>
-                        <h5 class="fw-semibold mb-0" style="font-size:1rem;">Screening Candidates</h5>
-                        <p class="mb-0" id="screeningStatus"
-                           style="font-size:.82rem;color:#6c757d;margin-top:2px;">Evaluating candidates, please wait…</p>
-                    </div>
-                </div>
-                <button type="button" class="btn-close flex-shrink-0 ms-2"
-                        id="screeningModalClose" data-bs-dismiss="modal"
-                        aria-label="Close" disabled></button>
+<div class="modal fade" id="screeningModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Running Screening</h5>
             </div>
-            <div class="modal-body" style="padding:1.25rem 1.5rem 1.75rem;">
-                <div id="screeningProgress">
-                    <div style="height:4px;background:#e9ecef;border-radius:4px;overflow:hidden;">
-                        <div id="screeningBar"
-                             style="height:100%;width:100%;background:var(--secondary);border-radius:4px;
-                                    animation:progressPulse 1.6s ease-in-out infinite;"></div>
-                    </div>
+            <div class="modal-body py-4">
+                <div class="text-center mb-3">
+                    <div class="spinner-border text-primary mb-2" role="status" id="screeningSpinner"></div>
+                    <p class="fw-semibold mb-1">Evaluating candidates, this might take some time. Please be patient...</p>
+                    <p class="text-muted small mb-0" id="screeningEstimate"></p>
                 </div>
+                <div class="progress mb-3" style="height: 8px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                         role="progressbar" style="width: 5%" id="screeningProgress"></div>
+                </div>
+                <p class="text-center mb-1" id="screeningStatus">
+                    <i class="bi bi-hourglass-split me-1 text-muted"></i>
+                    <span id="screeningMessage">Initializing...</span>
+                </p>
+                <p class="text-center text-muted small mb-0" id="screeningCandidate"></p>
+                <p class="text-center text-muted small mb-0" id="screeningTimer"></p>
             </div>
         </div>
     </div>
@@ -433,37 +428,79 @@ async function runScreening(jobId) {
     closeBtn.disabled = true;
     modal.show();
 
+    const progress  = document.getElementById('screeningProgress');
+    const message   = document.getElementById('screeningMessage');
+    const candidate = document.getElementById('screeningCandidate');
+    const estimate  = document.getElementById('screeningEstimate');
+    const timerEl   = document.getElementById('screeningTimer');
+    const spinner   = document.getElementById('screeningSpinner');
+
+    // Elapsed timer
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+        const s = Math.floor((Date.now() - startTime) / 1000);
+        timerEl.textContent = `Elapsed: ${s >= 60 ? Math.floor(s / 60) + 'm ' : ''}${s % 60}s`;
+    }, 1000);
+
     try {
-        const response = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
-        const data = await response.json();
+        // POST kicks off screening immediately and returns a task_id
+        const startRes = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
+        const startData = await startRes.json();
+        const taskId = startData.task_id;
 
-        bar.style.animation = 'none';
+        // Poll every 2 seconds for progress updates
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/screening/jobs/${jobId}/screen/progress/${taskId}`);
+                const task = await res.json();
 
-        if (data.success) {
-            bar.style.width = '100%';
-            bar.style.background = '#198754';
-            iconBox.style.background = '#f0fdf4';
-            iconBox.innerHTML = '<i class="bi bi-check-circle-fill" style="font-size:1.2rem;color:#198754;"></i>';
-            statusEl.textContent = `${data.candidates_screened} candidates screened successfully.`;
-            statusEl.style.color = '#198754';
-            setTimeout(() => location.reload(), 1600);
-        } else {
-            bar.style.width = '100%';
-            bar.style.background = '#dc3545';
-            iconBox.style.background = '#fff5f5';
-            iconBox.innerHTML = '<i class="bi bi-x-circle-fill" style="font-size:1.2rem;color:#dc3545;"></i>';
-            statusEl.textContent = data.message || 'Screening failed.';
-            statusEl.style.color = '#dc3545';
-            closeBtn.disabled = false;
-        }
+                const pct = task.total > 0
+                    ? Math.round(((task.current + 1) / task.total) * 100)
+                    : 5;
+
+                if (task.status === 'running' || task.status === 'starting') {
+                    progress.style.width = Math.max(5, pct) + '%';
+                    message.textContent = task.message || 'Processing...';
+                    if (task.candidate_name) {
+                        candidate.textContent = `Candidate ${task.current + 1} of ${task.total}: ${task.candidate_name}`;
+                    }
+                    if (task.est_seconds && !estimate.textContent) {
+                        const m = Math.floor(task.est_seconds / 60), s = task.est_seconds % 60;
+                        estimate.textContent = `${task.total} candidates · Est. ~${m > 0 ? m + 'm ' : ''}${s}s`;
+                    }
+                }
+
+                if (task.status === 'complete') {
+                    clearInterval(pollInterval);
+                    clearInterval(timerInterval);
+                    progress.style.width = '100%';
+                    progress.classList.remove('progress-bar-animated');
+                    progress.classList.add('bg-success');
+                    spinner.classList.add('d-none');
+                    message.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i> Done! Screened ${task.results.candidates_screened} candidates.`;
+                    candidate.textContent = '';
+                    timerEl.textContent = `Completed in ${task.elapsed}s`;
+                    setTimeout(() => location.reload(), 2000);
+                }
+
+                if (task.status === 'error') {
+                    clearInterval(pollInterval);
+                    clearInterval(timerInterval);
+                    spinner.classList.add('d-none');
+                    progress.classList.add('bg-danger');
+                    message.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i> ${task.error}`;
+                }
+
+            } catch (err) {
+                clearInterval(pollInterval);
+                clearInterval(timerInterval);
+                message.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i> Poll error: ${err.message}`;
+            }
+        }, 2000);
+
     } catch (error) {
-        bar.style.animation = 'none';
-        bar.style.background = '#dc3545';
-        iconBox.style.background = '#fff5f5';
-        iconBox.innerHTML = '<i class="bi bi-x-circle-fill" style="font-size:1.2rem;color:#dc3545;"></i>';
-        statusEl.textContent = `Error: ${error.message}`;
-        statusEl.style.color = '#dc3545';
-        closeBtn.disabled = false;
+        clearInterval(timerInterval);
+        message.innerHTML = `<i class="bi bi-x-circle text-danger me-1"></i> Error: ${error.message}`;
     }
 }
 

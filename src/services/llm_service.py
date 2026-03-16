@@ -192,13 +192,11 @@ Score each criterion. Be specific about what you found or didn't find.
 Respond with ONLY the JSON:"""
 
         try:
-            # Check if Ollama is available
-            if not self.is_available():
-                logger.error("Ollama is not running! Start with: ollama serve")
-                return self._default_evaluation(criteria)
+            # Ensure initialized (cheap no-op if already done)
+            if not self._initialized:
+                self.initialize()
 
-            # Use higher max_tokens to prevent truncation
-            response = self.generate(prompt, system_prompt=system_prompt, max_tokens=2000)
+            response = self.generate(prompt, system_prompt=system_prompt, max_tokens=800)
 
             logger.info(f"LLM response length: {len(response)} chars")
             logger.debug(f"LLM raw response: {response[:600]}")
