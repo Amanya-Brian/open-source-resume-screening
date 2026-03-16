@@ -378,13 +378,6 @@
     </div>
 </div>
 
-<style>
-@keyframes progressPulse {
-    0%   { opacity: 1; }
-    50%  { opacity: .35; }
-    100% { opacity: 1; }
-}
-</style>
 <!-- Rubric View Modal -->
 <div class="modal fade" id="rubricViewModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -411,21 +404,7 @@
 {% block extra_scripts %}
 <script>
 async function runScreening(jobId) {
-    const modalEl = document.getElementById('screeningModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-    const statusEl = document.getElementById('screeningStatus');
-    const closeBtn = document.getElementById('screeningModalClose');
-    const iconBox  = document.getElementById('screeningIconBox');
-    const bar      = document.getElementById('screeningBar');
-
-    // Reset state
-    statusEl.textContent = 'Evaluating candidates, please wait…';
-    statusEl.style.color = '#6c757d';
-    iconBox.style.background = '#f0f5f5';
-    iconBox.innerHTML = '<i class="bi bi-person-check-fill" style="font-size:1.2rem;color:var(--secondary);"></i>';
-    bar.style.animation = 'progressPulse 1.6s ease-in-out infinite';
-    bar.style.background = 'var(--secondary)';
-    closeBtn.disabled = true;
+    const modal = new bootstrap.Modal(document.getElementById('screeningModal'));
     modal.show();
 
     const progress  = document.getElementById('screeningProgress');
