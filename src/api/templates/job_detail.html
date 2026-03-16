@@ -346,33 +346,22 @@
 </div>
 
 <!-- Rubric Generation Modal -->
-<div class="modal fade" id="rubricModal" tabindex="-1" data-bs-keyboard="false" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
-        <div class="modal-content" style="border:none;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.14);">
-            <div class="modal-header align-items-start" style="border-bottom:none;padding:1.5rem 1.5rem 0.5rem;">
-                <div class="d-flex align-items-center gap-3 flex-grow-1">
-                    <div id="rubricIconBox" style="width:44px;height:44px;border-radius:12px;background:#f0f5f5;
-                         display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                        <i class="bi bi-file-earmark-ruled" style="font-size:1.2rem;color:var(--secondary);"></i>
-                    </div>
-                    <div>
-                        <h5 class="fw-semibold mb-0" style="font-size:1rem;">Generating Rubric</h5>
-                        <p class="mb-0" id="rubricStatus"
-                           style="font-size:.82rem;color:#6c757d;margin-top:2px;">Starting, please wait…</p>
-                    </div>
-                </div>
-                <button type="button" class="btn-close flex-shrink-0 ms-2"
-                        id="rubricModalClose" data-bs-dismiss="modal"
-                        aria-label="Close" disabled></button>
+<div class="modal fade" id="rubricModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-journal-text me-2"></i>Generating Rubric
+                </h5>
             </div>
-            <div class="modal-body" style="padding:.75rem 1.5rem 1.75rem;">
-                <!-- Indeterminate bar shown while processing -->
-                <div id="rubricProgressBar" style="height:4px;background:#e9ecef;border-radius:4px;overflow:hidden;margin-bottom:1rem;">
-                    <div style="height:100%;width:100%;background:var(--secondary);border-radius:4px;
-                                animation:progressPulse 1.6s ease-in-out infinite;"></div>
+            <div class="modal-body">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mb-2" id="rubricStatus">Starting rubric generation...</p>
                 </div>
-                <!-- Steps list populated by JS -->
-                <div id="rubricSteps"></div>
+                <div id="rubricSteps" class="text-start small"></div>
             </div>
         </div>
     </div>
@@ -426,6 +415,14 @@ async function runScreening(jobId) {
         const startRes = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
         const startData = await startRes.json();
         const taskId = startData.task_id;
+
+        if (!taskId) {
+            clearInterval(timerInterval);
+            spinner.classList.add('d-none');
+            progress.classList.add('bg-danger');
+            message.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i> ${startData.error || startData.message || 'Failed to start screening.'}`;
+            return;
+        }
 
         // Poll every 2 seconds for progress updates
         const pollInterval = setInterval(async () => {
@@ -484,87 +481,77 @@ async function runScreening(jobId) {
 }
 
 async function generateRubric(jobId) {
-    const modalEl  = document.getElementById('rubricModal');
-    const modal    = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const modalEl = document.getElementById('rubricModal');
+    const modal = new bootstrap.Modal(modalEl);
     const statusEl = document.getElementById('rubricStatus');
-    const stepsEl  = document.getElementById('rubricSteps');
-    const closeBtn = document.getElementById('rubricModalClose');
-    const iconBox  = document.getElementById('rubricIconBox');
-    const barWrap  = document.getElementById('rubricProgressBar');
+    const stepsEl = document.getElementById('rubricSteps');
 
-    const stepLabels = {
-        load_job:           'Loading job details',
-        rubric_exists:      'Checking existing rubric',
-        generate_rubric:    'Generating with AI',
-        save_rubric:        'Saving rubric',
-        link_rubric_to_job: 'Linking to job',
-    };
-
-    const buildStepsHtml = (steps) => {
-        if (!Array.isArray(steps) || steps.length === 0) return '';
-        return steps.map(step => {
-            const status = step.status || 'in_progress';
-            const label  = stepLabels[step.step] || step.step.replace(/_/g, ' ');
-            const dot = status === 'completed'
-                ? `<div style="width:20px;height:20px;border-radius:50%;background:#198754;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                       <i class="bi bi-check" style="color:#fff;font-size:.65rem;font-weight:700;"></i>
-                   </div>`
-                : status === 'failed'
-                ? `<div style="width:20px;height:20px;border-radius:50%;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                       <i class="bi bi-x" style="color:#fff;font-size:.75rem;font-weight:700;"></i>
-                   </div>`
-                : `<div style="width:20px;height:20px;border-radius:50%;background:#dee2e6;flex-shrink:0;"></div>`;
-
-            const textColor = status === 'failed' ? '#dc3545' : status === 'completed' ? '#198754' : '#6c757d';
-            return `
-                <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
-                    ${dot}
-                    <span class="small text-capitalize" style="color:${textColor};">${label}</span>
-                    ${step.message ? `<span class="ms-auto small text-muted" style="font-size:.75rem;">${step.message}</span>` : ''}
-                </div>`;
-        }).join('');
-    };
-
-    // Reset
-    statusEl.textContent = 'Starting, please wait…';
-    statusEl.style.color = '#6c757d';
+    statusEl.innerHTML = 'Starting rubric generation...';
     stepsEl.innerHTML = '';
-    iconBox.style.background = '#f0f5f5';
-    iconBox.innerHTML = '<i class="bi bi-file-earmark-ruled" style="font-size:1.2rem;color:var(--secondary);"></i>';
-    barWrap.style.display = 'block';
-    closeBtn.disabled = true;
     modal.show();
 
     try {
         const response = await fetch(`/api/rubrics/jobs/${jobId}/generate`, { method: 'POST' });
         const data = await response.json();
 
-        barWrap.style.display = 'none';
-        stepsEl.innerHTML = buildStepsHtml(data.steps);
+        const buildStepsHtml = (steps) => {
+            if (!Array.isArray(steps) || steps.length === 0) {
+                return '';
+            }
+            let html = '<ul class="list-unstyled mb-0">';
+            for (const step of steps) {
+                const status = step.status || 'in_progress';
+                let icon = 'bi-hourglass-split text-secondary';
+                let badgeClass = 'badge bg-secondary';
+                if (status === 'completed') {
+                    icon = 'bi-check-circle-fill text-success';
+                    badgeClass = 'badge bg-success';
+                } else if (status === 'failed') {
+                    icon = 'bi-x-circle-fill text-danger';
+                    badgeClass = 'badge bg-danger';
+                }
+                html += `
+                    <li class="mb-1 d-flex align-items-center">
+                        <i class="bi ${icon} me-2"></i>
+                        <span class="me-2 text-capitalize">${step.step || ''}</span>
+                        <span class="${badgeClass} text-capitalize">${status}</span>
+                        ${step.message ? `<span class="ms-2 text-muted">${step.message}</span>` : ''}
+                    </li>
+                `;
+            }
+            html += '</ul>';
+            return html;
+        };
 
         if (data.success) {
-            iconBox.style.background = '#f0fdf4';
-            iconBox.innerHTML = '<i class="bi bi-check-circle-fill" style="font-size:1.2rem;color:#198754;"></i>';
-            statusEl.textContent = 'Rubric generated successfully.';
-            statusEl.style.color = '#198754';
-            if (typeof showToast === 'function') showToast('Rubric generated successfully.', 'success');
-            setTimeout(() => { modal.hide(); location.reload(); }, 1800);
+            statusEl.innerHTML = `
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Rubric generated successfully.
+            `;
+            stepsEl.innerHTML = buildStepsHtml(data.steps);
+            if (typeof showToast === 'function') {
+                showToast('Rubric generated successfully.', 'success');
+            }
+            setTimeout(() => {
+                modal.hide();
+                location.reload();
+            }, 1800);
         } else {
             const message = data.error || data.message || 'Rubric generation failed.';
-            iconBox.style.background = '#fff5f5';
-            iconBox.innerHTML = '<i class="bi bi-x-circle-fill" style="font-size:1.2rem;color:#dc3545;"></i>';
-            statusEl.textContent = message;
-            statusEl.style.color = '#dc3545';
-            closeBtn.disabled = false;
-            if (typeof showToast === 'function') showToast(message, 'error');
+            statusEl.innerHTML = `
+                <i class="bi bi-x-circle text-danger me-2"></i>
+                ${message}
+            `;
+            stepsEl.innerHTML = buildStepsHtml(data.steps);
+            if (typeof showToast === 'function') {
+                showToast(message, 'error');
+            }
         }
     } catch (error) {
-        barWrap.style.display = 'none';
-        iconBox.style.background = '#fff5f5';
-        iconBox.innerHTML = '<i class="bi bi-x-circle-fill" style="font-size:1.2rem;color:#dc3545;"></i>';
-        statusEl.textContent = `Error: ${error.message}`;
-        statusEl.style.color = '#dc3545';
-        closeBtn.disabled = false;
+        statusEl.innerHTML = `
+            <i class="bi bi-x-circle text-danger me-2"></i>
+            Error: ${error.message}
+        `;
     }
 }
 
@@ -609,193 +596,102 @@ async function viewRubric(jobId) {
 
         const rubric = data.rubric;
         const criteria = rubric.criteria || [];
-
         const totalWeight = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
+        const totalPct = Math.round(totalWeight * 100);
+        const isComplete = totalPct === 100;
 
-        const criteriaRows = criteria.map(c => `
+        // Update modal title
+        const titleEl = modalEl.querySelector('.modal-title');
+        if (titleEl) titleEl.textContent = rubric.name || 'Job Rubric';
+
+        const criteriaRows = criteria.length > 0 ? criteria.map((c, idx) => {
+            const pct = Math.round((c.weight || 0) * 100);
+            return `
             <tr>
-                <td class="fw-semibold">${c.name}</td>
-                <td class="text-center">
-                    <span class="badge bg-primary fs-6">${Math.round((c.weight || 0) * 100)}%</span>
+                <td class="ps-0 text-muted small" style="width:32px;">${idx + 1}</td>
+                <td class="fw-semibold" style="width:200px;">${c.name}</td>
+                <td style="width:110px;">
+                    <div class="d-flex align-items-center gap-2">
+                        <div style="flex:1; height:3px; background:#e9ecef; border-radius:2px;">
+                            <div style="width:${pct}%; height:100%; background:#0d6efd; border-radius:2px;"></div>
+                        </div>
+                        <span class="text-muted small fw-semibold" style="min-width:32px; text-align:right;">${pct}%</span>
+                    </div>
                 </td>
-                <td class="text-muted">${c.description || ''}</td>
-            </tr>
-        `).join('');
+                <td class="text-muted small">${c.description || '—'}</td>
+            </tr>`;
+        }).join('') : `
+            <tr><td colspan="4" class="text-center text-muted py-4 small">No criteria defined.</td></tr>`;
+
+        const scoringItems = [
+            { score: 5, label: 'Exceeds requirements significantly', color: '#198754' },
+            { score: 4, label: 'Exceeds requirements',              color: '#20c997' },
+            { score: 3, label: 'Meets requirements',                color: '#0d6efd' },
+            { score: 2, label: 'Partially meets requirements',      color: '#fd7e14' },
+            { score: 1, label: 'Does not meet requirements',        color: '#dc3545' },
+            { score: 0, label: 'Not applicable / No evidence',      color: '#adb5bd' },
+        ].map(s => `
+            <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
+                <span style="width:28px;height:28px;border-radius:6px;background:${s.color};color:#fff;
+                             display:flex;align-items:center;justify-content:center;
+                             font-weight:700;font-size:.8rem;flex-shrink:0;">${s.score}</span>
+                <span class="small text-secondary">${s.label}</span>
+            </div>`).join('');
+
+        const recommendations = [
+            { range: '90 – 100%', label: 'Strong Yes', action: 'Proceed to Interview', dot: '#198754' },
+            { range: '80 – 89%',  label: 'Yes',        action: 'Proceed to Interview', dot: '#20c997' },
+            { range: '65 – 79%',  label: 'Maybe',      action: 'Hold for Review',      dot: '#fd7e14' },
+            { range: 'Below 65%', label: 'No',         action: 'Reject',               dot: '#dc3545' },
+        ].map(r => `
+            <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
+                <span class="text-muted small" style="width:72px;flex-shrink:0;">${r.range}</span>
+                <span style="width:8px;height:8px;border-radius:50%;background:${r.dot};flex-shrink:0;"></span>
+                <span class="small"><span class="fw-semibold">${r.label}</span>
+                    <span class="text-muted ms-1">— ${r.action}</span></span>
+            </div>`).join('');
 
         contentEl.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                    <h4 class="mb-1">
-                        <i class="bi bi-journal-text me-2"></i>${rubric.name || 'Job Rubric'}
-                    </h4>
-                    ${rubric.description ? `<p class="text-muted mb-0">${rubric.description}</p>` : ''}
+            <!-- Header -->
+            <div class="mb-4 pb-3" style="border-bottom:1px solid #e9ecef;">
+                ${rubric.description ? `<p class="text-muted small mb-3">${rubric.description}</p>` : ''}
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing:.06em;">Total Weight</span>
+                    <span class="small fw-bold ${isComplete ? 'text-success' : 'text-warning'}">${totalPct}%</span>
                 </div>
+                <div style="height:5px;background:#e9ecef;border-radius:4px;overflow:hidden;">
+                    <div style="width:${Math.min(totalPct,100)}%;height:100%;
+                                background:${isComplete ? '#198754' : '#fd7e14'};
+                                border-radius:4px;transition:width .4s ease;"></div>
+                </div>
+                ${!isComplete ? `<p class="text-warning small mt-1 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>${100 - totalPct}% of weight is unallocated.</p>` : ''}
             </div>
 
-            <div class="row">
-                <div class="col-lg-8">
-                    <div class="card mb-4">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Evaluation Criteria</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-hover mb-0">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th>Criterion</th>
-                                            <th class="text-center">Weight</th>
-                                            <th>Description</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${criteriaRows || `
-                                            <tr>
-                                                <td colspan="3" class="text-center text-muted py-3">
-                                                    No criteria defined in this rubric.
-                                                </td>
-                                            </tr>
-                                        `}
-                                    </tbody>
-                                    <tfoot class="bg-light">
-                                        <tr>
-                                            <td class="fw-bold">Total</td>
-                                            <td class="text-center">
-                                                <span class="badge bg-dark fs-6">
-                                                    ${Math.round(totalWeight * 100)}%
-                                                </span>
-                                            </td>
-                                            <td></td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
+            <!-- Criteria table -->
+            <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Evaluation Criteria</p>
+            <div class="table-responsive mb-4">
+                <table class="table align-middle mb-0" style="border-top:none;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #e9ecef;">
+                            <th class="ps-0 text-muted fw-normal small pb-2" style="width:32px;">#</th>
+                            <th class="text-muted fw-normal small pb-2">Criterion</th>
+                            <th class="text-muted fw-normal small pb-2" style="width:110px;">Weight</th>
+                            <th class="text-muted fw-normal small pb-2">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>${criteriaRows}</tbody>
+                </table>
+            </div>
 
-                    <div class="card mb-4">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0"><i class="bi bi-rulers me-2"></i>Scoring Scale (0-5)</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-hover mb-0">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th class="text-center" style="width: 80px;">Score</th>
-                                            <th>Description</th>
-                                            <th style="width: 200px;">Visual</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-success fs-5">5</span></td>
-                                            <td>Exceeds requirements significantly</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-success" style="width: 100%">100%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-success fs-5">4</span></td>
-                                            <td>Exceeds requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-success" style="width: 80%">80%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-primary fs-5">3</span></td>
-                                            <td>Meets requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-primary" style="width: 60%">60%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-warning text-dark fs-5">2</span></td>
-                                            <td>Partially meets requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-warning" style="width: 40%">40%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-danger fs-5">1</span></td>
-                                            <td>Does not meet requirements</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-danger" style="width: 20%">20%</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-center"><span class="badge bg-secondary fs-5">0</span></td>
-                                            <td>Not applicable / No evidence</td>
-                                            <td>
-                                                <div class="progress" style="height: 20px;">
-                                                    <div class="progress-bar bg-secondary" style="width: 0%"></div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
+            <!-- Scoring + Recommendations -->
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Scoring Scale (0 – 5)</p>
+                    <div>${scoringItems}</div>
                 </div>
-
-                <div class="col-lg-4">
-                    <div class="card mb-4">
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0"><i class="bi bi-signpost-split me-2"></i>Recommendations</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #dcfce7;">
-                                <div class="me-3">
-                                    <i class="bi bi-star-fill text-success" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-success">STRONG YES - Interview</div>
-                                    <div class="text-muted small">Score: 90% - 100%</div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #bbf7d0;">
-                                <div class="me-3">
-                                    <i class="bi bi-check-circle-fill text-success" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-success">YES - Interview</div>
-                                    <div class="text-muted small">Score: 80% - 89%</div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center mb-3 p-3 rounded" style="background-color: #fef3c7;">
-                                <div class="me-3">
-                                    <i class="bi bi-question-circle-fill text-warning" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-warning">Maybe - Hold</div>
-                                    <div class="text-muted small">Score: 65% - 79%</div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center p-3 rounded" style="background-color: #fecaca;">
-                                <div class="me-3">
-                                    <i class="bi bi-x-circle-fill text-danger" style="font-size: 2rem;"></i>
-                                </div>
-                                <div>
-                                    <div class="fw-bold text-danger">No - Reject</div>
-                                    <div class="text-muted small">Score: Below 65%</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div class="col-md-6">
+                    <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Outcome Thresholds</p>
+                    <div>${recommendations}</div>
                 </div>
             </div>
         `;
