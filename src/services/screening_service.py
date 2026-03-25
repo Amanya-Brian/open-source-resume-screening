@@ -116,8 +116,9 @@ class ScreeningService:
             resume_map = {}
         logger.info(f"Pre-fetched {len(resume_map)}/{total} resumes")
 
-        # Evaluate candidates concurrently — limits to 3 simultaneous to avoid overwhelming Ollama
-        _sem = asyncio.Semaphore(3)
+        # Ollama processes one request at a time — concurrent requests just queue inside it
+        # and risk hitting the read timeout. Serialize LLM calls to prevent timeouts.
+        _sem = asyncio.Semaphore(1)
 
         async def _evaluate_one(idx: int, app: dict) -> CandidateEvaluation:
             async with _sem:
@@ -142,13 +143,37 @@ class ScreeningService:
         for i, eval in enumerate(evaluations, 1):
             eval.detailed_notes = f"Rank #{i} of {len(evaluations)} candidates"
 
-        # Run fairness analysis
-        fairness_report = await self._run_fairness_analysis(job_id, evaluations, applications)
-
-        # Store results in MongoDB (including fairness report)
-        await self._store_results(job_id, evaluations, fairness_report)
+        # Store candidate results immediately (no fairness yet)
+        await self._store_screening_results(job_id, evaluations)
 
         return evaluations
+
+    async def generate_fairness_report(
+        self,
+        job_id: str,
+        evaluations: list[CandidateEvaluation],
+    ) -> Optional[FairnessReport]:
+        """Run fairness analysis and persist the report for a completed screening.
+
+        Designed to be called after ``screen_job_candidates`` so the fairness
+        computation does not block the screening result being returned to the caller.
+
+        Args:
+            job_id: Job listing ID (used to re-fetch applications for demographic data)
+            evaluations: Candidate evaluations produced by ``screen_job_candidates``
+
+        Returns:
+            FairnessReport or None if analysis fails
+        """
+        try:
+            applications = await self.mongo.find_many("applications", {"job_id": job_id})
+            fairness_report = await self._run_fairness_analysis(job_id, evaluations, applications)
+            if fairness_report:
+                await self._store_fairness_report(job_id, fairness_report)
+            return fairness_report
+        except Exception as e:
+            logger.error(f"generate_fairness_report error for job {job_id}: {e}", exc_info=True)
+            return None
 
     async def _evaluate_candidate(
         self,
@@ -942,13 +967,12 @@ class ScreeningService:
             logger.error(f"Fairness analysis error: {e}", exc_info=True)
             return None
 
-    async def _store_results(
+    async def _store_screening_results(
         self,
         job_id: str,
         evaluations: list[CandidateEvaluation],
-        fairness_report: Optional[FairnessReport] = None,
     ) -> None:
-        """Store screening results in MongoDB."""
+        """Store candidate screening results in MongoDB."""
         for eval in evaluations:
             result_doc = {
                 "_id": f"{job_id}-{eval.candidate_id}",
@@ -983,63 +1007,67 @@ class ScreeningService:
 
         logger.info(f"Stored {len(evaluations)} screening results for job {job_id}")
 
-        # Store fairness report
-        if fairness_report:
-            fairness_doc = {
-                "_id": f"fairness-{job_id}",
-                "job_id": job_id,
-                "session_id": fairness_report.session_id,
-                "is_compliant": fairness_report.is_compliant,
-                "metrics": {
-                    "disparate_impact_ratio": fairness_report.metrics.disparate_impact_ratio,
-                    "demographic_parity": fairness_report.metrics.demographic_parity,
-                    "equal_opportunity": fairness_report.metrics.equal_opportunity,
-                    "attribute_variance": fairness_report.metrics.attribute_variance,
-                },
-                "metric_explanations": {
-                    "disparate_impact_ratio": (
-                        "Measures whether selection rates are proportional across demographic groups. "
-                        "Calculated as the ratio of the selection rate of the least-selected group to the "
-                        "most-selected group. A value >= 0.8 satisfies the Four-Fifths Rule (80% rule), "
-                        "meaning no group is selected at a rate less than 80% of the highest-selected group."
-                    ),
-                    "demographic_parity": (
-                        "Measures the gap in selection rates between demographic groups. "
-                        "0% means all groups are shortlisted at identical rates (perfect parity). "
-                        "Higher values indicate uneven representation — e.g. 30% means the most-selected "
-                        "group is shortlisted 30 percentage points more often than the least-selected group."
-                    ),
-                    "equal_opportunity": (
-                        "Measures whether qualified candidates have equal chances of being selected "
-                        "regardless of their demographic group. Ensures the system does not systematically "
-                        "disadvantage any group of equally qualified applicants."
-                    ),
-                    "attribute_variance": (
-                        "Results of counterfactual fairness testing: for each candidate, protected attributes "
-                        "(gender, age, ethnicity, nationality) are hypothetically changed and the screening is "
-                        "re-evaluated. A variance of 0% means protected attributes have no effect on rankings, "
-                        "which is the target for a fair system."
-                    ),
-                    "compliance": (
-                        "The system is compliant when the Disparate Impact Ratio >= 0.8 (Four-Fifths Rule) "
-                        "AND attribute variance from counterfactual testing is near zero. Non-compliance "
-                        "indicates potential bias that should be investigated and addressed."
-                    ),
-                },
-                "violations": fairness_report.violations,
-                "recommendations": fairness_report.recommendations,
-                "generated_at": fairness_report.generated_at.isoformat() if fairness_report.generated_at else None,
-            }
+    async def _store_fairness_report(
+        self,
+        job_id: str,
+        fairness_report: FairnessReport,
+    ) -> None:
+        """Persist a fairness report to MongoDB."""
+        fairness_doc = {
+            "_id": f"fairness-{job_id}",
+            "job_id": job_id,
+            "session_id": fairness_report.session_id,
+            "is_compliant": fairness_report.is_compliant,
+            "metrics": {
+                "disparate_impact_ratio": fairness_report.metrics.disparate_impact_ratio,
+                "demographic_parity": fairness_report.metrics.demographic_parity,
+                "equal_opportunity": fairness_report.metrics.equal_opportunity,
+                "attribute_variance": fairness_report.metrics.attribute_variance,
+            },
+            "metric_explanations": {
+                "disparate_impact_ratio": (
+                    "Measures whether selection rates are proportional across demographic groups. "
+                    "Calculated as the ratio of the selection rate of the least-selected group to the "
+                    "most-selected group. A value >= 0.8 satisfies the Four-Fifths Rule (80% rule), "
+                    "meaning no group is selected at a rate less than 80% of the highest-selected group."
+                ),
+                "demographic_parity": (
+                    "Measures the gap in selection rates between demographic groups. "
+                    "0% means all groups are shortlisted at identical rates (perfect parity). "
+                    "Higher values indicate uneven representation — e.g. 30% means the most-selected "
+                    "group is shortlisted 30 percentage points more often than the least-selected group."
+                ),
+                "equal_opportunity": (
+                    "Measures whether qualified candidates have equal chances of being selected "
+                    "regardless of their demographic group. Ensures the system does not systematically "
+                    "disadvantage any group of equally qualified applicants."
+                ),
+                "attribute_variance": (
+                    "Results of counterfactual fairness testing: for each candidate, protected attributes "
+                    "(gender, age, ethnicity, nationality) are hypothetically changed and the screening is "
+                    "re-evaluated. A variance of 0% means protected attributes have no effect on rankings, "
+                    "which is the target for a fair system."
+                ),
+                "compliance": (
+                    "The system is compliant when the Disparate Impact Ratio >= 0.8 (Four-Fifths Rule) "
+                    "AND attribute variance from counterfactual testing is near zero. Non-compliance "
+                    "indicates potential bias that should be investigated and addressed."
+                ),
+            },
+            "violations": fairness_report.violations,
+            "recommendations": fairness_report.recommendations,
+            "generated_at": fairness_report.generated_at.isoformat() if fairness_report.generated_at else None,
+        }
 
-            await self.mongo.update_one(
-                "fairness_reports",
-                {"_id": fairness_doc["_id"]},
-                {"$set": fairness_doc},
-                upsert=True
-            )
+        await self.mongo.update_one(
+            "fairness_reports",
+            {"_id": fairness_doc["_id"]},
+            {"$set": fairness_doc},
+            upsert=True
+        )
 
-            logger.info(
-                f"Stored fairness report for job {job_id}: "
-                f"Compliant={fairness_report.is_compliant}, "
-                f"DIR={fairness_report.metrics.disparate_impact_ratio:.3f}"
-            )
+        logger.info(
+            f"Stored fairness report for job {job_id}: "
+            f"Compliant={fairness_report.is_compliant}, "
+            f"DIR={fairness_report.metrics.disparate_impact_ratio:.3f}"
+        )
