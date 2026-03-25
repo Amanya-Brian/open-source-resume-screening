@@ -15,6 +15,7 @@ reviewer).
 
 import json
 import logging
+import re
 from typing import Any, Optional
 
 from src.agents.base import AgentConfig, AgentContext, AgentResult, BaseAgent
@@ -173,29 +174,69 @@ class RubricGenerationAgent(BaseAgent[RubricGenerationInput, RubricGenerationOut
             response = self.llm_service.generate(
                 prompt,
                 system_prompt=system_prompt,
-                max_tokens=500,
+                max_tokens=1500,
                 temperature=0.2,
             )
-            logger.info(f"LLM response received, length: {len(response)}")
+            logger.info(f"LLM rubric response received, length: {len(response)}")
             if not response.strip():
                 raise ValueError("Empty response from LLM")
-            parsed = json.loads(response)
+
+            parsed = self._parse_criteria_json(response)
+            if not parsed:
+                raise ValueError("No criteria parsed from LLM response")
+
             tailored: list[EvaluationCriterion] = []
             for obj in parsed:
-                # create EvaluationCriterion; this will validate the fields
                 tailored.append(EvaluationCriterion(**obj))
-        except json.JSONDecodeError as e:
-            logger.warning(f"LLM returned invalid JSON: {response[:200]}... Error: {e}")
-            return base_rubric
         except Exception as e:
             logger.warning(f"LLM rubric generation failed ({e}), using base rubric")
             return base_rubric
 
-        # normalize weights if numerical issues occur
-        total_weight = sum(c.weight for c in tailored)
+        return self._normalize_weights(tailored)
+
+    def _parse_criteria_json(self, response: str) -> list[dict]:
+        """Extract a JSON array of criteria from LLM output.
+
+        Handles markdown fences, leading/trailing prose, and trailing commas
+        that LLMs commonly produce.
+        """
+        text = response.strip()
+
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'\s*```\s*$', '', text, flags=re.MULTILINE)
+        text = text.strip()
+
+        # Remove trailing commas before ] or } (common LLM mistake)
+        text = re.sub(r',\s*]', ']', text)
+        text = re.sub(r',\s*}', '}', text)
+
+        # Try direct parse first
+        try:
+            result = json.loads(text)
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError:
+            pass
+
+        # Try to extract the JSON array from anywhere in the text
+        match = re.search(r'\[[\s\S]*\]', text)
+        if match:
+            try:
+                result = json.loads(match.group(0))
+                if isinstance(result, list):
+                    return result
+            except json.JSONDecodeError:
+                pass
+
+        logger.warning(f"Could not extract JSON array from LLM response: {text[:300]}")
+        return []
+
+    def _normalize_weights(self, criteria: list[EvaluationCriterion]) -> list[EvaluationCriterion]:
+        """Normalize weights so they sum to exactly 1.0."""
+        total_weight = sum(c.weight for c in criteria)
         if abs(total_weight - 1.0) > 0.01 and total_weight > 0:
             logger.warning("Rubric weights do not sum to 1, normalizing")
-            for c in tailored:
+            for c in criteria:
                 c.weight = c.weight / total_weight
-
-        return tailored
+        return criteria

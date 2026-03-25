@@ -25,7 +25,7 @@ class LLMService:
         """
         self.settings = settings or get_settings()
         self.ollama_url = "http://localhost:11434"
-        self.model_name = getattr(self.settings, 'ollama_model', 'phi3')
+        self.model_name = getattr(self.settings, 'ollama_model', 'llama3:latest')
         self._initialized = False
         self._available_models = []
 
