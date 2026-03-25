@@ -1004,9 +1004,10 @@ class ScreeningService:
                         "meaning no group is selected at a rate less than 80% of the highest-selected group."
                     ),
                     "demographic_parity": (
-                        "Measures how evenly candidates are selected across demographic groups. "
-                        "A score of 100% means all groups have identical selection rates. "
-                        "Lower values indicate uneven representation in shortlisted candidates."
+                        "Measures the gap in selection rates between demographic groups. "
+                        "0% means all groups are shortlisted at identical rates (perfect parity). "
+                        "Higher values indicate uneven representation — e.g. 30% means the most-selected "
+                        "group is shortlisted 30 percentage points more often than the least-selected group."
                     ),
                     "equal_opportunity": (
                         "Measures whether qualified candidates have equal chances of being selected "
