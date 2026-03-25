@@ -487,10 +487,11 @@ def screen_job_candidates(job_id: str):
                     progress_callback=on_progress,
                 )
 
+                # Mark screening complete immediately — don't block on fairness
                 _screening_tasks[task_id].update({
                     "status": "complete",
                     "current": total,
-                    "message": "Screening complete!",
+                    "message": "Screening complete! Fairness report generating in background...",
                     "elapsed": int(time.time() - start),
                     "results": {
                         "success": True,
@@ -511,6 +512,10 @@ def screen_job_candidates(job_id: str):
                         ],
                     },
                 })
+
+                # Run fairness after screening is already marked complete.
+                # The task status is "complete" above so the UI won't wait for this.
+                await svc.generate_fairness_report(job_id, evaluations)
 
             loop.run_until_complete(_screen())
 
