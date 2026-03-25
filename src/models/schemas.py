@@ -334,7 +334,7 @@ class FairnessMetrics(BaseModel):
     """Fairness metrics for a screening session."""
 
     disparate_impact_ratio: float = Field(ge=0.0, le=2.0, default=1.0)
-    demographic_parity: float = Field(ge=0.0, le=1.0, default=1.0)
+    demographic_parity: float = Field(ge=0.0, le=1.0, default=0.0)
     equal_opportunity: float = Field(ge=0.0, le=1.0, default=1.0)
     attribute_variance: dict[str, float] = Field(default_factory=dict)
     counterfactual_results: list[CounterfactualResult] = Field(default_factory=list)

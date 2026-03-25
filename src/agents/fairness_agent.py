@@ -412,7 +412,9 @@ class FairnessAgent(BaseAgent[FairnessInput, FairnessOutput]):
                 rates.append(selected / total)
 
         if len(rates) < 2:
-            return 1.0
+            return 0.0
 
-        # Parity = 1 - max difference in rates
-        return 1.0 - (max(rates) - min(rates))
+        # Parity gap = max difference in selection rates across groups
+        # 0.0 = perfect parity (all groups selected equally)
+        # 1.0 = maximum disparity
+        return round(max(rates) - min(rates), 4)
