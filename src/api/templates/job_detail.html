@@ -778,7 +778,7 @@ async function loadFairnessReport(jobId) {
                     <div class="col-md-4">
                         <div class="card border-info h-100">
                             <div class="card-body text-center">
-                                <h1 class="mb-0 fw-bold">${metrics.demographic_parity ? (metrics.demographic_parity * 100).toFixed(1) : 'N/A'}%</h1>
+                                <h1 class="mb-0 fw-bold">${metrics.demographic_parity != null ? (metrics.demographic_parity * 100).toFixed(1) : 'N/A'}</h1>
                                 <h6 class="mt-2 mb-1">Demographic Parity</h6>
                                 <small class="text-muted">Equal selection rates</small>
                             </div>
