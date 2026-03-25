@@ -106,7 +106,7 @@ def generate_rubric(job_id: str):
         })
         agent = get_rubric_agent()
         context = AgentContext(job_id=job.id, session_id=str(uuid4()))
-        input_data = RubricGenerationInput(job=job)
+        input_data = RubricGenerationInput(job=job, raw_job=job_doc)
         agent_result = run_async(agent.run(input_data, context))
 
         if not agent_result.success or not agent_result.data:
