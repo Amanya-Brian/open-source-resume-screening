@@ -366,6 +366,7 @@ let currentCriterionKey = null;
 let currentCriterionName = null;
 let currentCriterionDescription = '';
 let currentCriterionWeight = 0;
+let currentCriteria = []; // cache of loaded criteria to avoid inline-string escaping bugs
 
 function cleanupBackdrops() {
     document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
@@ -571,6 +572,10 @@ async function openEditRubricModal(rubricId, rubricName) {
         const totalPct = Math.round(totalWeight * 100);
         const isComplete = totalPct === 100;
 
+        // Cache criteria so openEditCriterionModal can look up name/description by key
+        // without relying on fragile inline-string escaping in onclick attributes.
+        currentCriteria = criteria;
+
         // Update modal title to rubric name
         const titleEl = document.getElementById('rubricEditModalTitle');
         if (titleEl) titleEl.textContent = rubric.name || rubricName || 'Edit Rubric';
@@ -578,8 +583,6 @@ async function openEditRubricModal(rubricId, rubricName) {
         const rows = criteria.length > 0 ? criteria.map((c, idx) => {
             const weightPercent = Math.round((c.weight || 0) * 100);
             const otherWeightsPercent = Math.round((totalWeight - (c.weight || 0)) * 100);
-            const safeName = c.name.replace(/'/g, "\\'");
-            const safeDesc = (c.description || '').replace(/'/g, "\\'");
             return `
             <div style="display:flex;align-items:center;gap:14px;padding:13px 0;
                         border-bottom:1px solid #f1f3f5;">
@@ -609,11 +612,11 @@ async function openEditRubricModal(rubricId, rubricName) {
                     ${weightPercent}%
                 </span>
 
-                <!-- Edit icon button -->
+                <!-- Edit icon button — only passes key + numbers, no strings -->
                 <button type="button"
                         class="rubric-action-btn"
                         style="flex-shrink:0;"
-                        onclick="openEditCriterionModal('${rubricId}', '${c.key}', ${weightPercent}, '${safeName}', '${safeDesc}', ${otherWeightsPercent})"
+                        onclick="openEditCriterionModal('${rubricId}', '${c.key}', ${weightPercent}, ${otherWeightsPercent})"
                         data-bs-toggle="tooltip" data-bs-placement="top" title="Edit criterion">
                     <i class="bi bi-pencil"></i>
                 </button>
@@ -670,12 +673,15 @@ function openDeleteRubricModal(rubricId, rubricName) {
     modal.show();
 }
 
-function openEditCriterionModal(rubricId, criterionKey, currentWeightPercent, criterionName, criterionDescription, otherWeightsPercent) {
+function openEditCriterionModal(rubricId, criterionKey, currentWeightPercent, otherWeightsPercent) {
     currentRubricId = rubricId;
     currentCriterionKey = criterionKey;
-    currentCriterionName = criterionName || criterionKey;
-    currentCriterionDescription = criterionDescription || '';
     currentCriterionWeight = currentWeightPercent;
+
+    // Look up name + description from the cached criteria array (safe — no inline string escaping)
+    const criterion = currentCriteria.find(c => c.key === criterionKey) || {};
+    currentCriterionName = criterion.name || criterionKey;
+    currentCriterionDescription = criterion.description || '';
 
     const maxAllowed = 100 - (otherWeightsPercent || 0);
 
