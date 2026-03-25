@@ -459,27 +459,39 @@ def screen_job_candidates(job_id: str):
                 mongo = _Mongo()
                 await mongo.connect()
 
-                # Pre-fetch application count for time estimate
+                # Pre-fetch application count for initial estimate
                 apps = await mongo.find_many("applications", {"job_id": job_id})
                 total = len(apps)
-                est_secs = total * 30
                 _screening_tasks[task_id].update({
                     "status": "running",
                     "total": total,
-                    "est_seconds": est_secs,
-                    "message": f"Found {total} candidates — est. ~{est_secs // 60}m {est_secs % 60}s" if est_secs >= 60 else f"Found {total} candidates — est. ~{est_secs}s",
+                    "est_seconds": None,
+                    "message": f"Found {total} candidates — starting evaluation...",
                 })
 
                 svc = ScreeningService(mongo_service=mongo)
 
                 def on_progress(current, total, name, msg):
+                    elapsed = int(time.time() - start)
+                    # After the first candidate completes, compute a live ETA
+                    # based on actual elapsed time rather than a hardcoded guess.
+                    if current > 0:
+                        avg_secs = elapsed / current
+                        remaining = int(avg_secs * (total - current))
+                        if remaining >= 60:
+                            eta_str = f"~{remaining // 60}m {remaining % 60}s remaining"
+                        else:
+                            eta_str = f"~{remaining}s remaining"
+                    else:
+                        eta_str = "calculating..."
                     _screening_tasks[task_id].update({
                         "status": "running",
                         "current": current,
                         "total": total,
                         "candidate_name": name,
-                        "message": msg,
-                        "elapsed": int(time.time() - start),
+                        "message": f"{msg} ({eta_str})",
+                        "elapsed": elapsed,
+                        "est_remaining": remaining if current > 0 else None,
                     })
 
                 evaluations = await svc.screen_job_candidates(
