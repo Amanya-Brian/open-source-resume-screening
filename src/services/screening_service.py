@@ -212,9 +212,9 @@ class ScreeningService:
             job_title=job_title,
         )
 
-        # Try LLM-based evaluation if enabled
+        # Try LLM-based evaluation if enabled and candidate has enough text to evaluate
         llm_succeeded = False
-        if self.use_llm and full_text:
+        if self.use_llm and len(full_text) >= 100:
             try:
                 criteria_scores, strengths, concerns = await self._evaluate_with_llm(
                     full_text, qualifications, responsibilities
@@ -972,9 +972,9 @@ class ScreeningService:
         job_id: str,
         evaluations: list[CandidateEvaluation],
     ) -> None:
-        """Store candidate screening results in MongoDB."""
-        for eval in evaluations:
-            result_doc = {
+        """Store candidate screening results in MongoDB (all writes run in parallel)."""
+        def _build_doc(eval: CandidateEvaluation) -> dict:
+            return {
                 "_id": f"{job_id}-{eval.candidate_id}",
                 "job_id": job_id,
                 "candidate_id": eval.candidate_id,
@@ -998,13 +998,16 @@ class ScreeningService:
                 "concerns": eval.concerns,
             }
 
-            await self.mongo.update_one(
+        docs = [_build_doc(ev) for ev in evaluations]
+        await asyncio.gather(*[
+            self.mongo.update_one(
                 "screening_results",
-                {"_id": result_doc["_id"]},
-                {"$set": result_doc},
-                upsert=True
+                {"_id": doc["_id"]},
+                {"$set": doc},
+                upsert=True,
             )
-
+            for doc in docs
+        ])
         logger.info(f"Stored {len(evaluations)} screening results for job {job_id}")
 
     async def _store_fairness_report(
