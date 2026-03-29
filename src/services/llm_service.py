@@ -106,9 +106,10 @@ class LLMService:
                     "options": {
                         "temperature": temperature,
                         "num_predict": max_tokens,
+                        "num_ctx": 2048,  # Shrink context window — biggest speed lever for llama3
                     },
                 },
-                timeout=180,
+                timeout=300,
             )
             response.raise_for_status()
 
@@ -167,12 +168,12 @@ Respond with ONLY valid JSON in this format:
         resps = job_requirements.get("responsibilities", [])
         job_text = ""
         if quals:
-            job_text += "REQUIRED QUALIFICATIONS:\n" + "\n".join([f"- {q}" for q in quals[:8]])
+            job_text += "REQUIRED QUALIFICATIONS:\n" + "\n".join([f"- {q}" for q in quals[:5]])
         if resps:
-            job_text += "\n\nKEY RESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:8]])
+            job_text += "\n\nKEY RESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:5]])
 
-        # Keep more candidate context
-        max_candidate_len = 3000
+        # Trim candidate text — less input = faster prefill; 1500 chars is plenty for scoring
+        max_candidate_len = 1500
         if len(candidate_text) > max_candidate_len:
             candidate_text = candidate_text[:max_candidate_len] + "..."
 
@@ -196,7 +197,7 @@ Respond with ONLY the JSON:"""
             if not self._initialized:
                 self.initialize()
 
-            response = self.generate(prompt, system_prompt=system_prompt, max_tokens=800)
+            response = self.generate(prompt, system_prompt=system_prompt, max_tokens=500)
 
             logger.info(f"LLM response length: {len(response)} chars")
             logger.debug(f"LLM raw response: {response[:600]}")

@@ -440,9 +440,11 @@ async function runScreening(jobId) {
                     if (task.candidate_name) {
                         candidate.textContent = `Candidate ${task.current + 1} of ${task.total}: ${task.candidate_name}`;
                     }
-                    if (task.est_seconds && !estimate.textContent) {
-                        const m = Math.floor(task.est_seconds / 60), s = task.est_seconds % 60;
-                        estimate.textContent = `${task.total} candidates · Est. ~${m > 0 ? m + 'm ' : ''}${s}s`;
+                    if (task.est_remaining != null) {
+                        const m = Math.floor(task.est_remaining / 60), s = task.est_remaining % 60;
+                        estimate.textContent = `${task.total} candidates · ~${m > 0 ? m + 'm ' : ''}${s}s remaining`;
+                    } else if (task.total > 0 && !estimate.textContent) {
+                        estimate.textContent = `${task.total} candidates · calculating...`;
                     }
                 }
 
