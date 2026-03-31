@@ -468,10 +468,10 @@ async function viewRubricMatrix(rubricId) {
             </div>`).join('');
 
         const recommendations = [
-            { range: '90 – 100%', label: 'Strong Yes', action: 'Proceed to Interview', dot: '#198754' },
-            { range: '80 – 89%',  label: 'Yes',        action: 'Proceed to Interview', dot: '#20c997' },
-            { range: '65 – 79%',  label: 'Maybe',      action: 'Hold for Review',      dot: '#fd7e14' },
-            { range: 'Below 65%', label: 'No',         action: 'Reject',               dot: '#dc3545' },
+            { range: '80 – 100%', label: 'Strong Yes', action: 'Proceed to Interview', dot: '#198754' },
+            { range: '65 – 79%',  label: 'Yes',        action: 'Proceed to Interview', dot: '#22c55e' },
+            { range: '50 – 64%',  label: 'Maybe',      action: 'Hold for Review',      dot: '#fd7e14' },
+            { range: 'Below 50%', label: 'No',         action: 'Reject',               dot: '#dc3545' },
         ].map(r => `
             <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
                 <span class="text-muted small" style="width:72px; flex-shrink:0;">${r.range}</span>
