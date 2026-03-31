@@ -68,11 +68,11 @@
         <div class="card h-100">
             <div class="card-body text-center">
                 <h6 class="text-muted mb-2">Percentage Score</h6>
-                <div class="display-4 fw-bold {% if result.percentage >= 80 %}text-success{% elif result.percentage >= 65 %}text-warning{% else %}text-danger{% endif %}">
+                <div class="display-4 fw-bold {% if result.percentage >= 65 %}text-success{% elif result.percentage >= 50 %}text-warning{% else %}text-danger{% endif %}">
                     {{ "%.1f"|format(result.percentage) }}%
                 </div>
                 <div class="progress mt-2" style="height: 10px;">
-                    <div class="progress-bar {% if result.percentage >= 80 %}bg-success{% elif result.percentage >= 65 %}bg-warning{% else %}bg-danger{% endif %}"
+                    <div class="progress-bar {% if result.percentage >= 65 %}bg-success{% elif result.percentage >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
                          style="width: {{ result.percentage }}%"></div>
                 </div>
             </div>
