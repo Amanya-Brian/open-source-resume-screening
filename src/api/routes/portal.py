@@ -211,12 +211,57 @@ def job_detail(job_id: str):
             for r in results
         ]
 
+        # Fetch rubric for the full PDF report (server-side to avoid client fetch issues)
+        rubric_data = None
+        rubric_id = job.get("rubric_id")
+        if rubric_id:
+            try:
+                from bson import ObjectId
+                rubric_doc = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
+                if rubric_doc:
+                    rubric_doc["_id"] = str(rubric_doc["_id"])
+                    rubric_data = {
+                        "name": rubric_doc.get("name", ""),
+                        "description": rubric_doc.get("description", ""),
+                        "criteria": [
+                            {
+                                "name": c.get("name", ""),
+                                "key": c.get("key", ""),
+                                "weight": c.get("weight", 0),
+                                "description": c.get("description", ""),
+                            }
+                            for c in rubric_doc.get("criteria", [])
+                        ],
+                    }
+            except Exception as e:
+                logger.warning(f"Could not load rubric for job {job_id}: {e}")
+
+        # Fetch fairness report for the full PDF report (server-side)
+        fairness_data = None
+        fairness_doc = run_async(mongo.find_one("fairness_reports", {"job_id": job_id}))
+        if fairness_doc:
+            m = fairness_doc.get("metrics", {})
+            fairness_data = {
+                "is_compliant": fairness_doc.get("is_compliant"),
+                "metrics": {
+                    "disparate_impact_ratio": m.get("disparate_impact_ratio"),
+                    "demographic_parity": m.get("demographic_parity"),
+                    "equal_opportunity": m.get("equal_opportunity"),
+                    "attribute_variance": m.get("attribute_variance", {}),
+                },
+                "violations": fairness_doc.get("violations", []),
+                "recommendations": fairness_doc.get("recommendations", []),
+                "generated_at": fairness_doc.get("generated_at"),
+            }
+
         return render_template(
             "job_detail.html",
             active_page="jobs",
             job=job_data,
             applications=apps_data,
             results=results_data,
+            rubric_data=rubric_data,
+            fairness_data=fairness_data,
         )
 
     except Exception as e:

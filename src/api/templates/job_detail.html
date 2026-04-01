@@ -118,6 +118,12 @@
                     <i class="bi bi-info-circle me-1"></i>A rubric is required before screening
                 </p>
                 {% endif %}
+
+                {% if results %}
+                <button class="btn btn-outline-danger w-100" id="fullReportBtn" onclick="generateFullReport('{{ job.id }}')">
+                    <i class="bi bi-file-earmark-pdf-fill me-2"></i>Full Report (PDF)
+                </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -170,12 +176,20 @@
 <!-- Screening Results -->
 {% if results %}
 <div class="card">
-    <div class="card-header bg-white">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-trophy me-2"></i>Ranked Candidates</h5>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success" onclick="exportAllCSV()">
+                <i class="bi bi-filetype-csv me-1"></i>Export CSV
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="exportAllPDF()">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Export PDF
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table id="candidatesTable" class="table table-hover align-middle mb-0">
                 <thead class="bg-light">
                     <tr>
                         <th style="width: 60px;">Rank</th>
@@ -918,5 +932,473 @@ document.addEventListener('DOMContentLoaded', function() {
     loadFairnessReport('{{ job.id }}');
 });
 {% endif %}
+
+// ── Export helpers ────────────────────────────────────────────────────────────
+const JOB_TITLE  = {{ job.title | tojson }};
+const SCREENED_AT = new Date().toLocaleDateString();
+
+function _tableRows() {
+    // Collect rows from the rendered table, skip the Actions column (index 5)
+    const rows = [];
+    document.querySelectorAll('#candidatesTable thead tr').forEach(tr => {
+        const cells = [...tr.querySelectorAll('th')].slice(0, 5);
+        rows.push(cells.map(c => c.innerText.trim()));
+    });
+    document.querySelectorAll('#candidatesTable tbody tr').forEach(tr => {
+        const cells = [...tr.querySelectorAll('td')].slice(0, 5);
+        rows.push(cells.map(c => c.innerText.trim()));
+    });
+    return rows;
+}
+
+function exportAllCSV() {
+    const rows = _tableRows();
+    const csv = rows.map(r => r.map(v => `"${v.replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `screening_results_${JOB_TITLE.replace(/\s+/g,'_')}.csv`;
+    a.click();
+}
+
+function exportAllPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    // Header
+    doc.setFontSize(14);
+    doc.setTextColor(73, 22, 26);
+    doc.text(`Screening Results — ${JOB_TITLE}`, 14, 14);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Exported: ${SCREENED_AT}`, 14, 20);
+
+    const rows = _tableRows();
+    doc.autoTable({
+        head: [rows[0]],
+        body: rows.slice(1),
+        startY: 25,
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [73, 22, 26], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [245, 248, 248] },
+        columnStyles: { 0: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' } },
+    });
+
+    doc.save(`screening_results_${JOB_TITLE.replace(/\s+/g,'_')}.pdf`);
+}
+
+// ── Full Report (PDF) ─────────────────────────────────────────────────────────
+{% if results %}
+const ALL_CANDIDATES = {{ results | tojson }};
+const JOB_META = {
+    title:    {{ job.title    | tojson }},
+    company:  {{ job.company  | tojson }},
+    location: {{ job.location | tojson if job.location else 'null' }},
+    id:       {{ job.id       | tojson }},
+};
+// Embedded server-side — no client fetch needed
+const RUBRIC_DATA   = {{ rubric_data   | tojson if rubric_data   else 'null' }};
+const FAIRNESS_DATA = {{ fairness_data | tojson if fairness_data else 'null' }};
+{% endif %}
+
+function generateFullReport(jobId) {
+    const btn = document.getElementById('fullReportBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Building report…';
+
+    try {
+        _buildFullPDF(RUBRIC_DATA, FAIRNESS_DATA);
+    } catch (e) {
+        showToast('Failed to generate report: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill me-2"></i>Full Report (PDF)';
+    }
+}
+
+function _buildFullPDF(rubricData = RUBRIC_DATA, fairnessData = FAIRNESS_DATA) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, MARGIN = 14;
+    const DARK   = [73, 22, 26];
+    const TEAL   = [82, 117, 117];
+    const LIGHT  = [245, 248, 248];
+    const DATE   = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    const safe   = s => String(s ?? '');
+    const slug   = JOB_META.title.replace(/\s+/g, '_');
+
+    // ── helper: page footer ───────────────────────────────────────────────────
+    function addFooter(pageNum, total) {
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`${JOB_META.title} — Screening Report`, MARGIN, 292);
+        doc.text(`Page ${pageNum} of ${total}`, W - MARGIN, 292, { align: 'right' });
+        doc.setDrawColor(200);
+        doc.line(MARGIN, 288, W - MARGIN, 288);
+    }
+
+    // ── helper: section heading ───────────────────────────────────────────────
+    function sectionHeading(text, y) {
+        doc.setFillColor(...DARK);
+        doc.rect(MARGIN, y, W - MARGIN * 2, 7, 'F');
+        doc.setFontSize(10);
+        doc.setTextColor(255);
+        doc.text(text, MARGIN + 3, y + 5);
+        return y + 11;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PAGE 1 — COVER
+    // ════════════════════════════════════════════════════════════════════════
+    // Brand bar
+    doc.setFillColor(...DARK);
+    doc.rect(0, 0, W, 35, 'F');
+    doc.setFontSize(20);
+    doc.setTextColor(255);
+    doc.text('Screening Report', MARGIN, 20);
+    doc.setFontSize(10);
+    doc.setTextColor(200, 180, 180);
+    doc.text('AI-Powered Resume Screening System', MARGIN, 28);
+
+    // Job info block
+    let y = 50;
+    doc.setFontSize(16);
+    doc.setTextColor(...DARK);
+    doc.text(safe(JOB_META.title), MARGIN, y); y += 8;
+    doc.setFontSize(11);
+    doc.setTextColor(...TEAL);
+    doc.text(safe(JOB_META.company), MARGIN, y); y += 6;
+    if (JOB_META.location) {
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(JOB_META.location, MARGIN, y); y += 6;
+    }
+
+    y += 6;
+    doc.setDrawColor(...TEAL);
+    doc.setLineWidth(0.5);
+    doc.line(MARGIN, y, W - MARGIN, y); y += 8;
+
+    // Summary stats
+    const compliant = fairnessData != null ? fairnessData.is_compliant : null;
+    const stats = [
+        ['Date Generated',      DATE],
+        ['Total Candidates',    String(ALL_CANDIDATES.length)],
+        ['Rubric Applied',      rubricData?.criteria?.length ? 'Yes' : 'Default'],
+        ['Fairness Compliant',  compliant === null ? 'N/A' : compliant ? 'Yes - PASS' : 'No - FAIL'],
+    ];
+    doc.autoTable({
+        body: stats,
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        styles: { fontSize: 10, cellPadding: 3 },
+        columnStyles: {
+            0: { fontStyle: 'bold', cellWidth: 60, textColor: DARK },
+            1: { textColor: [40, 40, 40] },
+        },
+        theme: 'plain',
+        tableLineColor: [220, 220, 220],
+        tableLineWidth: 0.2,
+    });
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PAGE 2 — RUBRIC
+    // ════════════════════════════════════════════════════════════════════════
+    doc.addPage();
+    y = MARGIN;
+    y = sectionHeading('Screening Rubric', y);
+
+    // rubricData.criteria[].{ name, key, weight (0-1 float), description }
+    // fallback: derive from first candidate's criteria_scores
+    const criteria = rubricData?.criteria?.length
+        ? rubricData.criteria
+        : ALL_CANDIDATES[0]?.criteria_scores?.map(c => ({
+            name:        c.criterion_name,
+            weight:      c.weight,          // keep as 0-1 float; formatted below
+            description: '',
+          })) ?? [];
+
+    if (criteria.length) {
+        doc.autoTable({
+            head: [['Criterion', 'Weight', 'Description']],
+            body: criteria.map(c => [
+                safe(c.name),
+                Math.round((c.weight ?? 0) * 100) + '%',
+                safe(c.description) || '—',
+            ]),
+            startY: y,
+            margin: { left: MARGIN, right: MARGIN },
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: LIGHT },
+            columnStyles: { 1: { halign: 'center', cellWidth: 28 } },
+        });
+        y = doc.lastAutoTable.finalY + 8;
+    } else {
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text('No rubric data available — default criteria applied.', MARGIN, y + 6);
+        y += 14;
+    }
+
+    // Score scale legend
+    y = sectionHeading('Score Scale', y);
+    doc.autoTable({
+        head: [['Score', 'Label', 'Meaning']],
+        body: [
+            ['5', 'Exceeds Significantly', 'Far exceeds all requirements'],
+            ['4', 'Exceeds',               'Meets and surpasses requirements'],
+            ['3', 'Meets',                 'Fully meets requirements'],
+            ['2', 'Partially Meets',       'Meets some requirements'],
+            ['1', 'Does Not Meet',         'Does not meet requirements'],
+        ],
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: LIGHT },
+        columnStyles: { 0: { halign: 'center', cellWidth: 18 } },
+    });
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PAGE 3 — OVERALL RANKINGS
+    // ════════════════════════════════════════════════════════════════════════
+    doc.addPage();
+    y = MARGIN;
+    y = sectionHeading('Overall Candidate Rankings', y);
+
+    const rankRows = ALL_CANDIDATES.map((c, i) => [
+        i + 1,
+        safe(c.candidate_name),
+        safe(typeof c.total_weighted_score === 'number' ? c.total_weighted_score.toFixed(2) : c.total_weighted_score) + ' / 5',
+        safe(typeof c.percentage === 'number' ? c.percentage.toFixed(1) : c.percentage) + '%',
+        safe(c.recommendation),
+    ]);
+
+    doc.autoTable({
+        head: [['Rank', 'Candidate', 'Score', 'Percentage', 'Recommendation']],
+        body: rankRows,
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: DARK, textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: LIGHT },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: 15 },
+            2: { halign: 'center', cellWidth: 28 },
+            3: { halign: 'center', cellWidth: 28 },
+        },
+        didParseCell(data) {
+            if (data.section === 'body' && data.column.index === 4) {
+                const v = safe(data.cell.raw);
+                if (v.includes('STRONG YES'))   data.cell.styles.textColor = [21, 128, 61];
+                else if (v.includes('YES'))     data.cell.styles.textColor = [34, 197, 94];
+                else if (v.includes('Maybe'))   data.cell.styles.textColor = [194, 120, 3];
+                else                            data.cell.styles.textColor = [185, 28, 28];
+                data.cell.styles.fontStyle = 'bold';
+            }
+        },
+    });
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PAGES 4+ — ONE PAGE PER CANDIDATE
+    // ════════════════════════════════════════════════════════════════════════
+    ALL_CANDIDATES.forEach((cand, idx) => {
+        doc.addPage();
+        y = MARGIN;
+
+        // Candidate header strip
+        doc.setFillColor(...TEAL);
+        doc.rect(0, 0, W, 22, 'F');
+        doc.setFontSize(13);
+        doc.setTextColor(255);
+        doc.text(`#${idx + 1}  ${safe(cand.candidate_name)}`, MARGIN, 10);
+        doc.setFontSize(9);
+        doc.setTextColor(200, 230, 230);
+        const pct = typeof cand.percentage === 'number' ? cand.percentage.toFixed(1) : cand.percentage;
+        const sc  = typeof cand.total_weighted_score === 'number' ? cand.total_weighted_score.toFixed(2) : cand.total_weighted_score;
+        doc.text(`Score: ${sc}/5  |  ${pct}%  |  ${safe(cand.recommendation)}`, MARGIN, 17);
+        y = 30;
+
+        // Criteria scores table
+        y = sectionHeading('Criterion Scores', y);
+        const scoreRows = (cand.criteria_scores || []).map(s => [
+            safe(s.criterion_name),
+            `${Math.round((s.weight ?? 0) * 100)}%`,
+            `${s.raw_score} / 5`,
+            safe(s.evidence),
+        ]);
+
+        if (scoreRows.length) {
+            doc.autoTable({
+                head: [['Criterion', 'Weight', 'Score', 'Evidence']],
+                body: scoreRows,
+                startY: y,
+                margin: { left: MARGIN, right: MARGIN },
+                styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
+                headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: LIGHT },
+                columnStyles: {
+                    1: { halign: 'center', cellWidth: 20 },
+                    2: { halign: 'center', cellWidth: 20 },
+                    3: { cellWidth: 80 },
+                },
+            });
+            y = doc.lastAutoTable.finalY + 6;
+        }
+
+        // Strengths
+        const strengths = cand.strengths || [];
+        if (strengths.length) {
+            y = sectionHeading('Strengths', y);
+            doc.setFontSize(8.5);
+            doc.setTextColor(40);
+            strengths.forEach(s => {
+                const lines = doc.splitTextToSize(`• ${safe(s)}`, W - MARGIN * 2);
+                doc.setTextColor(21, 128, 61);
+                doc.text(lines, MARGIN, y);
+                y += lines.length * 5;
+            });
+            y += 3;
+        }
+
+        // Concerns
+        const concerns = cand.concerns || [];
+        if (concerns.length) {
+            y = sectionHeading('Concerns', y);
+            concerns.forEach(c => {
+                const lines = doc.splitTextToSize(`• ${safe(c)}`, W - MARGIN * 2);
+                doc.setTextColor(185, 28, 28);
+                doc.text(lines, MARGIN, y);
+                y += lines.length * 5;
+            });
+        }
+    });
+
+    // ════════════════════════════════════════════════════════════════════════
+    // LAST PAGE — FAIRNESS REPORT
+    // ════════════════════════════════════════════════════════════════════════
+    doc.addPage();
+    y = MARGIN;
+    y = sectionHeading('Fairness Report', y);
+
+    if (fairnessData && fairnessData.metrics) {
+        const m = fairnessData.metrics;
+        const av = m.attribute_variance || {};
+
+        // Compliance banner
+        doc.setFontSize(11);
+        const compliantColor = fairnessData.is_compliant ? [21, 128, 61] : [185, 28, 28];
+        doc.setTextColor(...compliantColor);
+        doc.text(
+            fairnessData.is_compliant ? '[PASS]  System is Compliant (Four-Fifths Rule)' : '[FAIL]  Compliance Violations Detected',
+            MARGIN, y
+        ); y += 6;
+        if (fairnessData.generated_at) {
+            doc.setFontSize(8);
+            doc.setTextColor(120);
+            doc.text(`Report generated: ${new Date(fairnessData.generated_at).toLocaleString()}`, MARGIN, y);
+            y += 6;
+        }
+        y += 2;
+
+        // Metrics table
+        y = sectionHeading('Metrics', y);
+        const dir  = m.disparate_impact_ratio ?? null;
+        const dp   = m.demographic_parity     ?? null;
+        const eo   = m.equal_opportunity      ?? null;
+        const metricRows = [
+            [
+                'Disparate Impact Ratio (DIR)',
+                dir !== null ? dir.toFixed(3) : 'N/A',
+                '>= 0.800',
+                dir === null ? 'N/A' : dir >= 0.8 ? 'PASS' : 'FAIL',
+            ],
+            [
+                'Demographic Parity (gap)',
+                dp !== null ? (dp * 100).toFixed(1) + '%' : 'N/A',
+                '0%',
+                dp === null ? 'N/A' : dp === 0 ? 'PASS' : 'NOTE',
+            ],
+            [
+                'Equal Opportunity',
+                eo !== null ? eo.toFixed(3) : 'N/A',
+                '>= 0.800',
+                eo === null ? 'N/A' : eo >= 0.8 ? 'PASS' : 'NOTE',
+            ],
+        ];
+        // Add per-attribute variance rows
+        Object.entries(av).forEach(([attr, val]) => {
+            const v = typeof val === 'number' ? val : null;
+            metricRows.push([
+                'Attribute Variance - ' + attr,
+                v !== null ? v.toFixed(4) : 'N/A',
+                '~= 0',
+                v === null ? 'N/A' : v <= 0.05 ? 'PASS' : 'FAIL',
+            ]);
+        });
+
+        doc.autoTable({
+            head: [['Metric', 'Value', 'Target', 'Status']],
+            body: metricRows,
+            startY: y,
+            margin: { left: MARGIN, right: MARGIN },
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: DARK, textColor: 255, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: LIGHT },
+            columnStyles: {
+                1: { halign: 'center', cellWidth: 30 },
+                2: { halign: 'center', cellWidth: 30 },
+                3: { halign: 'center', cellWidth: 25 },
+            },
+            didParseCell(data) {
+                if (data.section === 'body' && data.column.index === 3) {
+                    const v = safe(data.cell.raw);
+                    data.cell.styles.textColor = v.includes('Pass') ? [21,128,61] : v.includes('Fail') ? [185,28,28] : [194,120,3];
+                    data.cell.styles.fontStyle = 'bold';
+                }
+            },
+        });
+        y = doc.lastAutoTable.finalY + 8;
+
+        // Violations
+        if (fairnessData.violations && fairnessData.violations.length) {
+            y = sectionHeading('Violations', y);
+            doc.setFontSize(8.5);
+            fairnessData.violations.forEach(v => {
+                const lines = doc.splitTextToSize(`• ${safe(v)}`, W - MARGIN * 2);
+                doc.setTextColor(185, 28, 28);
+                doc.text(lines, MARGIN, y);
+                y += lines.length * 5 + 1;
+            });
+            y += 3;
+        }
+
+        // Recommendations
+        if (fairnessData.recommendations && fairnessData.recommendations.length) {
+            y = sectionHeading('Recommendations', y);
+            doc.setFontSize(8.5);
+            fairnessData.recommendations.forEach(r => {
+                const lines = doc.splitTextToSize(`• ${safe(r)}`, W - MARGIN * 2);
+                doc.setTextColor(30, 80, 120);
+                doc.text(lines, MARGIN, y);
+                y += lines.length * 5 + 1;
+            });
+        }
+    } else {
+        doc.setFontSize(10);
+        doc.setTextColor(120);
+        doc.text('Fairness report not yet available. Run screening to generate.', MARGIN, y + 8);
+    }
+
+    // ── Add footers to all pages ──────────────────────────────────────────────
+    const totalPages = doc.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        addFooter(p, totalPages);
+    }
+
+    doc.save(`full_report_${slug}_${new Date().toISOString().slice(0,10)}.pdf`);
+}
 </script>
 {% endblock %}
