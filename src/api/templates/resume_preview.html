@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ candidate_name }} - Resume Preview{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.dashboard') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.jobs_list') }}">Jobs</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.job_detail', job_id=job.id) }}">{{ job.title }}</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('portal.candidate_detail', job_id=job.id, candidate_id=candidate_id) }}">{{ candidate_name }}</a></li>
+        <li class="breadcrumb-item active">Resume</li>
+    </ol>
+</nav>
+
+<!-- Header -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1">
+                    <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+                    {{ candidate_name }}'s Resume
+                </h4>
+                <p class="text-muted mb-0 small">
+                    <i class="bi bi-briefcase me-1"></i> Applying for: {{ job.title }}
+                </p>
+            </div>
+            <div class="d-flex gap-2">
+                {% if resume_url %}
+                <a href="{{ resume_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-box-arrow-up-right me-1"></i> Open in New Tab
+                </a>
+                <a href="{{ resume_url }}" download class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-download me-1"></i> Download
+                </a>
+                {% endif %}
+                <a href="{{ url_for('portal.candidate_detail', job_id=job.id, candidate_id=candidate_id) }}"
+                   class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back to Candidate
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resume Preview -->
+{% if resume_url %}
+<div class="card">
+    <div class="card-body p-0">
+        <!-- PDF iframe viewer -->
+        <iframe
+            id="resumeFrame"
+            src="{{ resume_url }}"
+            style="width: 100%; height: 85vh; border: none; border-radius: 0.375rem;"
+            title="Resume of {{ candidate_name }}">
+        </iframe>
+    </div>
+</div>
+
+<!-- Fallback message if iframe fails to load -->
+<div id="iframeFallback" class="alert alert-warning mt-3" style="display: none;">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    The resume could not be displayed inline.
+    <a href="{{ resume_url }}" target="_blank" class="alert-link">Click here to open it directly.</a>
+</div>
+
+{% else %}
+<!-- No resume available -->
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-file-earmark-x text-muted" style="font-size: 4rem;"></i>
+        <h5 class="mt-3 text-muted">No Resume Available</h5>
+        <p class="text-muted">This candidate did not submit a resume with their application.</p>
+        <a href="{{ url_for('portal.candidate_detail', job_id=job.id, candidate_id=candidate_id) }}"
+           class="btn btn-outline-secondary mt-2">
+            <i class="bi bi-arrow-left me-1"></i> Back to Candidate
+        </a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Detect if iframe failed to load (e.g. CORS block or invalid URL)
+    const frame = document.getElementById('resumeFrame');
+    if (frame) {
+        frame.addEventListener('error', function () {
+            document.getElementById('iframeFallback').style.display = 'block';
+        });
+
+        // Also show fallback if iframe loads blank after 5 seconds
+        // (happens when PDF host blocks embedding)
+        setTimeout(() => {
+            try {
+                const iframeDoc = frame.contentDocument || frame.contentWindow.document;
+                if (!iframeDoc || iframeDoc.body.innerHTML === '') {
+                    document.getElementById('iframeFallback').style.display = 'block';
+                }
+            } catch (e) {
+                // Cross-origin — iframe is loading external URL, this is expected
+                // Don't show fallback for cross-origin iframes
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}

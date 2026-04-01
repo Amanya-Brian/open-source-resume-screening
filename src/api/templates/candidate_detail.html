@@ -200,9 +200,19 @@
 </div>
 
 <!-- Back Button -->
-<div class="mt-4">
+<div class="mt-4 d-flex gap-2">
     <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i> Back to Job
     </a>
+    {% if resume_url %}
+    <a href="{{ url_for('portal.candidate_resume', job_id=job.id, candidate_id=result.candidate_id) }}"
+       class="btn btn-primary">
+        <i class="bi bi-file-earmark-pdf me-1"></i> View Resume
+    </a>
+    {% else %}
+    <button class="btn btn-outline-secondary" disabled title="No resume available">
+        <i class="bi bi-file-earmark-pdf me-1"></i> No Resume Available
+    </button>
+    {% endif %}
 </div>
 {% endblock %}
