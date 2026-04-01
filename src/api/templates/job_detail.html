@@ -472,6 +472,11 @@ async function runScreening(jobId) {
                     message.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i> Done! Screened ${task.results.candidates_screened} candidates.`;
                     candidate.textContent = '';
                     timerEl.textContent = `Completed in ${task.elapsed}s`;
+                    // Store message so it shows after the page reloads
+                    sessionStorage.setItem('postReloadToast', JSON.stringify({
+                        message: 'Screening complete. The fairness report is being generated in the background — it will appear in the Fairness section shortly.',
+                        type: 'info',
+                    }));
                     setTimeout(() => location.reload(), 2000);
                 }
 
@@ -919,11 +924,20 @@ async function loadFairnessReport(jobId) {
     }
 }
 
-// Initialise tooltips
+// Initialise tooltips + post-reload toasts
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
         new bootstrap.Tooltip(el, { trigger: 'hover' });
     });
+
+    const pending = sessionStorage.getItem('postReloadToast');
+    if (pending) {
+        sessionStorage.removeItem('postReloadToast');
+        try {
+            const { message, type } = JSON.parse(pending);
+            showToast(message, type);
+        } catch (_) {}
+    }
 });
 
 // Auto-load fairness report if results exist
