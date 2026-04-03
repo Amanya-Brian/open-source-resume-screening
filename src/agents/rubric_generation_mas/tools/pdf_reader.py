@@ -23,13 +23,13 @@ def read_pdf(url: str) -> str:
         response.raise_for_status()
 
         # extract text from PDF bytes
-        import pypdf
+        import pdfplumber
         pdf_bytes = io.BytesIO(response.content)
-        reader = pypdf.PdfReader(pdf_bytes)
 
         raw_text = ""
-        for page in reader.pages:
-            raw_text += page.extract_text() + "\n"
+        with pdfplumber.open(pdf_bytes) as pdf:
+            for page in pdf.pages:
+                raw_text += (page.extract_text() or "") + "\n"
 
         if not raw_text.strip():
             logger.warning("pdf_reader: extracted "
@@ -40,7 +40,8 @@ def read_pdf(url: str) -> str:
                     f"{len(raw_text)} characters "
                     f"from PDF")
 
-        return raw_text.strip()
+        # truncate to ~3000 chars to stay within llama3 context window
+        return raw_text.strip()[:3000]
 
     except requests.exceptions.ConnectionError:
         logger.error("pdf_reader: could not reach URL")

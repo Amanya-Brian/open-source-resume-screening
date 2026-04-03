@@ -320,6 +320,8 @@ def scoring_matrix():
         rubrics_view: list[dict[str, Any]] = []
         rubrics = run_async(mongo.find_many("rubrics", {}, sort=[("created_at", -1)]))
 
+        jobs_with_rubric_ids = set()
+
         for r in rubrics:
             rubric_id = str(r.get("_id"))
             created_at = r.get("created_at")
@@ -334,9 +336,11 @@ def scoring_matrix():
                 except Exception:
                     created_display = str(created_at)[:10]
 
-            # Find the job that references this rubric (if any)
             job = run_async(mongo.find_one("job_listings", {"rubric_id": rubric_id}))
             job_id = job.get("_id") if job else None
+            if job_id:
+                jobs_with_rubric_ids.add(str(job_id))
+
             rubrics_view.append({
                 "id": rubric_id,
                 "name": r.get("name", "Untitled Rubric"),
@@ -347,11 +351,24 @@ def scoring_matrix():
                 "job_company": job.get("company", "") if job else "",
             })
 
+        # Jobs without a rubric yet
+        all_jobs = run_async(mongo.find_many("job_listings", {}, sort=[("raw_data.created_at", -1)]))
+        jobs_without_rubric = [
+            {
+                "id":      j.get("_id"),
+                "title":   j.get("title", "Untitled"),
+                "company": j.get("company", ""),
+            }
+            for j in all_jobs
+            if str(j.get("_id")) not in jobs_with_rubric_ids
+        ]
+
         return render_template(
             "scoring_matrix.html",
             active_page="scoring",
             criteria=criteria,
             rubrics=rubrics_view,
+            jobs_without_rubric=jobs_without_rubric,
         )
 
     except Exception as e:

@@ -25,6 +25,7 @@ accelerate  # For efficient model loading
 bitsandbytes  # For 8-bit quantization
 
 # Document Processing
+pypdf
 PyPDF2
 pdfplumber
 python-docx

@@ -1,26 +1,21 @@
 """Rubric management and generation API endpoints."""
 
 import asyncio
+import json
 import logging
+import queue
+import threading
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
 from bson import ObjectId
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 
-from src.agents.base import AgentContext
-from src.agents.rubric_generation_agent import (
-    RubricGenerationAgent,
-    RubricGenerationInput,
-)
-from src.models.schemas import JobListing, Rubric
+from src.agents.rubric_generation_mas.coordinator import run_pipeline
 from src.services.mongo_service import MongoService
 
 rubrics_bp = Blueprint("rubrics", __name__)
 logger = logging.getLogger(__name__)
-
-_rubric_agent: RubricGenerationAgent | None = None
 
 
 def get_mongo_service() -> MongoService:
@@ -28,20 +23,8 @@ def get_mongo_service() -> MongoService:
     return MongoService()
 
 
-def get_rubric_agent() -> RubricGenerationAgent:
-    """Get or create rubric generation agent."""
-    global _rubric_agent
-    if _rubric_agent is None:
-        _rubric_agent = RubricGenerationAgent()
-    return _rubric_agent
-
-
 def run_async(coro):
-    """Run an async coroutine safely (reuse or create event loop).
-
-    This mirrors the pattern used in other routes to avoid 'Event loop is closed'
-    issues when Motor or other async clients are reused.
-    """
+    """Run an async coroutine safely."""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_closed():
@@ -53,138 +36,110 @@ def run_async(coro):
     return loop.run_until_complete(coro)
 
 
-@rubrics_bp.route("/rubrics/jobs/<job_id>/generate", methods=["POST"])
-def generate_rubric(job_id: str):
-    """Generate and persist a rubric for a given job.
+# ── SSE helper ──────────────────────────────────────────────────────────────
 
-    The rubric is created using the RubricGenerationAgent (LLM-backed) based on
-    the job's responsibilities, requirements, and description. Progress
-    milestones are returned in the response for better UI/UX feedback.
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
+
+
+# ── In-flight human input sessions (job_id → {event, response}) ─────────────
+
+_human_input_sessions: dict[str, dict] = {}
+
+
+# ── Generate rubric — streams every step via SSE ─────────────────────────────
+
+@rubrics_bp.route("/rubrics/jobs/<job_id>/generate", methods=["GET"])
+def generate_rubric_stream(job_id: str):
     """
-    steps: list[dict[str, Any]] = []
+    Stream rubric generation progress via Server-Sent Events.
+    Each message is a JSON object with type and data fields.
+    When a conflict is detected the stream emits a human_input_required event.
+    The frontend submits a response via POST /rubrics/jobs/<job_id>/human-input.
+    """
+    progress_queue = queue.Queue()
 
-    try:
-        mongo = get_mongo_service()
-        run_async(mongo.connect())
+    def on_progress(event: dict):
+        progress_queue.put({"type": "step", "data": event})
 
-        steps.append({"step": "load_job", "status": "in_progress", "message": "Loading job details"})
-        job_doc = run_async(mongo.find_one("job_listings", {"_id": job_id}))
-        if not job_doc:
-            steps[-1]["status"] = "failed"
-            steps[-1]["message"] = "Job not found"
-            return jsonify({
-                "success": False,
-                "error": "Job not found",
-                "steps": steps,
-            }), 404
-        steps[-1]["status"] = "completed"
+    def on_human_input(conflict_context: dict, current_rubric: dict) -> dict:
+        """Block pipeline thread until human responds via POST endpoint."""
+        evt      = threading.Event()
+        session  = {"event": evt, "response": None}
+        _human_input_sessions[job_id] = session
 
-        # If job already has a rubric, just return it and update steps
-        existing_rubric_id = job_doc.get("rubric_id")
-        if existing_rubric_id:
-            steps.append({
-                "step": "rubric_exists",
-                "status": "completed",
-                "message": "Rubric already exists for this job",
-            })
-            existing_rubric = run_async(mongo.find_one("rubrics", {"_id": existing_rubric_id}))
-            return jsonify({
-                "success": True,
-                "rubric_id": existing_rubric_id,
-                "job_id": job_id,
-                "steps": steps,
-                "rubric": existing_rubric,
-            })
-
-        job = JobListing.model_validate(job_doc)
-
-        # Prepare and run rubric generation agent
-        steps.append({
-            "step": "generate_rubric",
-            "status": "in_progress",
-            "message": "Generating rubric from job responsibilities and description",
-        })
-        agent = get_rubric_agent()
-        context = AgentContext(job_id=job.id, session_id=str(uuid4()))
-        input_data = RubricGenerationInput(job=job, raw_job=job_doc)
-        agent_result = run_async(agent.run(input_data, context))
-
-        if not agent_result.success or not agent_result.data:
-            steps[-1]["status"] = "failed"
-            steps[-1]["message"] = "Rubric generation failed"
-            return jsonify({
-                "success": False,
-                "error": "Rubric generation failed",
-                "details": agent_result.errors if agent_result else None,
-                "steps": steps,
-            }), 500
-
-        tailored_criteria = agent_result.data.criteria
-        steps[-1]["status"] = "completed"
-
-        # Persist rubric
-        steps.append({
-            "step": "save_rubric",
-            "status": "in_progress",
-            "message": "Saving rubric to database",
-        })
-        rubric = Rubric(
-            name=f"{job.title} – Rubric",
-            description=f"LLM-generated rubric for job '{job.title}' at {job.company}",
-            criteria=tailored_criteria,
-        )
-
-        rubric_doc = rubric.model_dump(by_alias=True)
-        # Let MongoDB generate _id to avoid duplicate '' values
-        rubric_doc.pop("_id", None)
-        rubric_id = run_async(mongo.insert_one("rubrics", rubric_doc))
-        steps[-1]["status"] = "completed"
-
-        # Link rubric to job
-        steps.append({
-            "step": "link_rubric_to_job",
-            "status": "in_progress",
-            "message": "Linking rubric to job listing",
-        })
-        run_async(mongo.update_one(
-            "job_listings",
-            {"_id": job_id},
-            {"$set": {"rubric_id": rubric_id, "updated_at": datetime.now()}},
-        ))
-        steps[-1]["status"] = "completed"
-
-        return jsonify({
-            "success": True,
-            "rubric_id": rubric_id,
-            "job_id": job_id,
-            "steps": steps,
-            "rubric": {
-                "name": rubric.name,
-                "description": rubric.description,
-                "criteria": [
-                    {
-                        "name": c.name,
-                        "key": c.key,
-                        "weight": c.weight,
-                        "description": c.description,
-                    }
-                    for c in tailored_criteria
-                ],
-            },
+        # push conflict to the browser
+        progress_queue.put({
+            "type": "human_input_required",
+            "data": {
+                "conflict_context": conflict_context,
+                "current_rubric":   current_rubric
+            }
         })
 
-    except Exception as e:
-        logger.error(f"Rubric generation error for job {job_id}: {e}")
-        if steps:
-            steps[-1]["status"] = "failed"
-            steps[-1]["message"] = f"Error: {e}"
-        return jsonify({
-            "success": False,
-            "error": "Rubric generation error",
-            "message": str(e),
-            "steps": steps,
-        }), 500
+        # block until POST /human-input sets the response
+        evt.wait(timeout=300)  # 5 min timeout
+        _human_input_sessions.pop(job_id, None)
 
+        response = session.get("response")
+        if not response:
+            # timeout — auto-approve to keep pipeline moving
+            return {"approved": True, "action": "approve"}
+        return response
+
+    def run():
+        try:
+            result = run_pipeline(
+                job_id,
+                progress_callback=on_progress,
+                human_input_fn=on_human_input
+            )
+            progress_queue.put({"type": "done", "data": result})
+        except Exception as e:
+            logger.error(f"generate_rubric_stream error for job {job_id}: {e}")
+            progress_queue.put({"type": "error", "data": {"message": str(e)}})
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    def event_stream():
+        yield _sse({"type": "start", "data": {"job_id": job_id}})
+        while True:
+            event = progress_queue.get()
+            yield _sse(event)
+            if event["type"] in ("done", "error"):
+                break
+
+    return Response(
+        stream_with_context(event_stream()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":       "keep-alive",
+        }
+    )
+
+
+# ── Human input response ─────────────────────────────────────────────────────
+
+@rubrics_bp.route("/rubrics/jobs/<job_id>/human-input", methods=["POST"])
+def submit_human_input(job_id: str):
+    """
+    Receive human decision during a running pipeline.
+    Body: { "action": "tweak_weights"|"add_criterion"|"approve", ... }
+    """
+    session = _human_input_sessions.get(job_id)
+    if not session:
+        return jsonify({"success": False, "error": "No active pipeline waiting for input"}), 404
+
+    data = request.get_json(silent=True) or {}
+    session["response"] = data
+    session["event"].set()
+    return jsonify({"success": True})
+
+
+# ── Get rubric by ID ─────────────────────────────────────────────────────────
 
 @rubrics_bp.route("/rubrics/<rubric_id>", methods=["GET"])
 def get_rubric(rubric_id: str):
@@ -201,17 +156,11 @@ def get_rubric(rubric_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ── Update a single criterion ─────────────────────────────────────────────────
+
 @rubrics_bp.route("/rubrics/<rubric_id>/criteria/<criterion_key>", methods=["PATCH"])
 def update_rubric_criterion(rubric_id: str, criterion_key: str):
-    """Update a single criterion's fields (e.g. weight) within a rubric.
-
-    Body (JSON):
-        {
-            "weight": 0.2,
-            "name": "New name",            # optional
-            "description": "New desc"      # optional
-        }
-    """
+    """Update a single criterion's fields (e.g. weight) within a rubric."""
     try:
         if not request.is_json:
             return jsonify({"success": False, "error": "JSON body required"}), 400
@@ -232,7 +181,6 @@ def update_rubric_criterion(rubric_id: str, criterion_key: str):
         mongo = get_mongo_service()
         run_async(mongo.connect())
 
-        # Load rubric
         rubric = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
         if not rubric:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
@@ -249,7 +197,6 @@ def update_rubric_criterion(rubric_id: str, criterion_key: str):
         if not updated:
             return jsonify({"success": False, "error": "Criterion not found in rubric"}), 404
 
-        # Ensure total weight does not exceed 1.0 (100%)
         total_weight = round(sum(round(float(c.get("weight") or 0.0), 4) for c in criteria), 4)
         if total_weight > 1.0:
             return jsonify({
@@ -257,7 +204,6 @@ def update_rubric_criterion(rubric_id: str, criterion_key: str):
                 "error": f"Total weight would be {total_weight * 100:.1f}%. It cannot exceed 100%.",
             }), 400
 
-        # Persist updated criteria
         run_async(mongo.update_one(
             "rubrics",
             {"_id": ObjectId(rubric_id)},
@@ -266,12 +212,13 @@ def update_rubric_criterion(rubric_id: str, criterion_key: str):
 
         rubric["criteria"] = criteria
         rubric["_id"] = str(rubric["_id"])
-
         return jsonify({"success": True, "rubric": rubric})
     except Exception as e:
         logger.error(f"update_rubric_criterion error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ── Get rubric for a job ──────────────────────────────────────────────────────
 
 @rubrics_bp.route("/rubrics/jobs/<job_id>", methods=["GET"])
 def get_rubric_for_job(job_id: str):
@@ -279,14 +226,12 @@ def get_rubric_for_job(job_id: str):
     try:
         mongo = get_mongo_service()
         run_async(mongo.connect())
-        print('job_id', job_id);
         job = run_async(mongo.find_one("job_listings", {"_id": job_id}))
         if not job:
             return jsonify({"success": False, "error": "Job not found"}), 404
         rubric_id = job.get("rubric_id")
         if not rubric_id:
             return jsonify({"success": True, "rubric": None})
-
         rubric = run_async(mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)}))
         if not rubric:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
@@ -295,6 +240,8 @@ def get_rubric_for_job(job_id: str):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+# ── Update rubric ─────────────────────────────────────────────────────────────
 
 @rubrics_bp.route("/rubrics/<rubric_id>", methods=["PUT", "PATCH"])
 def update_rubric(rubric_id: str):
@@ -306,8 +253,7 @@ def update_rubric(rubric_id: str):
         data = request.get_json(silent=True) or {}
         update_doc: dict[str, Any] = {}
 
-        allowed_fields = {"name", "description", "criteria"}
-        for key in allowed_fields:
+        for key in {"name", "description", "criteria"}:
             if key in data:
                 update_doc[key] = data[key]
 
@@ -335,25 +281,22 @@ def update_rubric(rubric_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ── Delete rubric ─────────────────────────────────────────────────────────────
+
 @rubrics_bp.route("/rubrics/<rubric_id>", methods=["DELETE"])
 def delete_rubric(rubric_id: str):
     """Delete a rubric and unlink it from any jobs."""
     try:
         mongo = get_mongo_service()
         run_async(mongo.connect())
-        # Delete rubric
         deleted = run_async(mongo.delete_one("rubrics", {"_id": ObjectId(rubric_id)}))
         if not deleted:
             return jsonify({"success": False, "error": "Rubric not found"}), 404
-
-        # Unlink from any jobs referencing it
         run_async(mongo.update_many(
             "job_listings",
             {"rubric_id": rubric_id},
             {"$unset": {"rubric_id": ""}},
         ))
-
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-

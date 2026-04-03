@@ -108,7 +108,7 @@ class LLMService:
                         "num_predict": max_tokens,
                     },
                 },
-                timeout=180,
+                timeout=300,
             )
             response.raise_for_status()
 

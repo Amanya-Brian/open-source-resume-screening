@@ -1,12 +1,13 @@
 # agents/refiner_agent.py
+# Pure logic — no LLM call needed.
+# Applies weight fixes and human decisions directly.
 
-import json
 import logging
-from src.services.llm_service import LLMService
-from tools.weight_validator import weight_validator
-from tools.rubric_versioner import rubric_versioner
+from src.agents.rubric_generation_mas.tools.weight_validator import weight_validator
+from src.agents.rubric_generation_mas.tools.rubric_versioner import rubric_versioner
 
 logger = logging.getLogger(__name__)
+
 
 def refiner_agent(
     current_rubric: dict,
@@ -16,89 +17,36 @@ def refiner_agent(
     human_decisions: list,
     previous_rubric_versions: list
 ) -> dict:
+    import copy
+    rubric = copy.deepcopy(current_rubric)
+    criteria = rubric.get("criteria", [])
 
-    llm = LLMService.get_instance()
+    # Apply human weight changes
+    weight_changes = improvement_brief.get("weight_changes", {})
+    for c in criteria:
+        if c.get("id") in weight_changes:
+            c["weight"] = float(weight_changes[c["id"]])
+            logger.info(f"refiner: applied weight change {c['id']} → {c['weight']}")
 
-    prompt = f"""
-    CURRENT RUBRIC TO REFINE:
-    {json.dumps(current_rubric, indent=2)}
+    # Add any human-requested criteria
+    for issue in improvement_brief.get("issues_to_fix", []):
+        if issue.get("source") == "human" and issue.get("action") == "add_criterion":
+            new_c = issue.get("criterion")
+            if new_c:
+                criteria.append(new_c)
+                logger.info(f"refiner: added criterion {new_c.get('id')}")
 
-    IMPROVEMENT BRIEF (what needs fixing):
-    {json.dumps(improvement_brief, indent=2)}
+    # Normalize weights to sum to 1.0
+    total = sum(float(c.get("weight", 0)) for c in criteria)
+    if total > 0 and abs(total - 1.0) > 0.001:
+        for c in criteria:
+            c["weight"] = round(float(c.get("weight", 0)) / total, 4)
 
-    HUMAN DECISIONS (highest priority — override everything):
-    {json.dumps(human_decisions, indent=2)}
+    rubric["criteria"] = criteria
+    rubric["total_weight"] = round(sum(c.get("weight", 0) for c in criteria), 4)
 
-    DOCUMENT CONTEXT (maintain tone and depth):
-    {json.dumps(document_context, indent=2)}
-
-    KEY RESPONSIBILITIES (all criteria must still trace here):
-    {json.dumps(key_responsibilities, indent=2)}
-
-    PREVIOUS RUBRIC VERSIONS (do not repeat these mistakes):
-    {json.dumps(previous_rubric_versions, indent=2)}
-    """
-
-    response = llm.generate(
-        prompt=prompt,
-        system_prompt="""You are an expert rubric editor.
-
-                  You will receive:
-                  - current rubric to refine
-                  - improvement brief: what to fix
-                  - human decisions: explicitly
-                    requested changes — these
-                    override everything else
-                  - document context: maintain
-                    appropriate tone and depth
-                  - key responsibilities: all
-                    criteria must still trace back
-                    to these after refinement
-                  - previous rubric versions:
-                    do not repeat past mistakes
-
-                  YOUR JOB:
-                  Apply ALL changes in the
-                  improvement brief.
-                  Respect ALL human decisions
-                  above everything else.
-                  Keep unchanged anything not
-                  in the brief.
-                  Ensure weights still sum to 1.0.
-                  Increment version number by 1.
-
-                  Return ONLY valid JSON.
-                  No explanation, no preamble,
-                  no markdown code blocks.
-                  Return the complete updated
-                  rubric in the same format
-                  as the input rubric.""",
-        max_tokens=800,
-        temperature=0.2
-    )
-
-    try:
-        updated_rubric = json.loads(response)
-    except json.JSONDecodeError:
-        logger.warning("refiner_agent: "
-                       "failed to parse JSON response")
-        # return current rubric unchanged
-        # if refiner fails
-        updated_rubric = current_rubric
-
-    # TOOL validates weights after refinement
-    weight_check = weight_validator(
-        updated_rubric["criteria"]
-    )
+    weight_check = weight_validator(criteria)
     if not weight_check["valid"]:
-        updated_rubric["weight_warning"] = (
-            weight_check["issues"]
-        )
+        rubric["weight_warning"] = weight_check.get("issues")
 
-    # TOOL versions the rubric
-    updated_rubric = rubric_versioner(
-        updated_rubric,
-        current_rubric
-    )
-
-    return updated_rubric
+    return rubric_versioner(rubric, current_rubric)

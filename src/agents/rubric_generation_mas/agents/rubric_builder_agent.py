@@ -6,95 +6,92 @@ from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_fences(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        text = parts[1] if len(parts) > 1 else text
+        if text.startswith("json"):
+            text = text[4:]
+    return text.strip()
+
+
+def _normalize_weights(criteria: list) -> list:
+    """Ensure weights sum to exactly 1.0."""
+    total = sum(float(c.get("weight", 0)) for c in criteria)
+    if total <= 0:
+        equal = round(1.0 / len(criteria), 4) if criteria else 0
+        for c in criteria:
+            c["weight"] = equal
+    elif abs(total - 1.0) > 0.001:
+        for c in criteria:
+            c["weight"] = round(float(c.get("weight", 0)) / total, 4)
+    return criteria
+
+
 def rubric_builder_agent(
     document_context: dict,
     key_responsibilities: list,
     current_rubric: dict = None
 ) -> dict:
 
+    n = len(key_responsibilities)
+    equal_weight = round(1.0 / n, 2) if n else 0.2
+
+    responsibilities_text = "\n".join(
+        f"{i+1}. {r}" for i, r in enumerate(key_responsibilities)
+    )
+
+    context_hint = ""
+    if document_context.get("seniority"):
+        context_hint += f"Seniority: {document_context['seniority']}. "
+    if document_context.get("job_purpose"):
+        context_hint += f"Role purpose: {document_context['job_purpose']}."
+
     llm = LLMService.get_instance()
 
-    prompt = f"""
-    DOCUMENT CONTEXT:
-    {json.dumps(document_context, indent=2)}
-
-    KEY RESPONSIBILITIES:
-    {json.dumps(key_responsibilities, indent=2)}
-
-    EXISTING RUBRIC (refine if provided, else build fresh):
-    {json.dumps(current_rubric, indent=2)
-     if current_rubric else "null — build fresh"}
-    """
-
     response = llm.generate(
-        prompt=prompt,
-        system_prompt="""You are an expert rubric builder
-                  for job candidate evaluation.
-
-                  You will receive:
-                  - document_context: background
-                    about the role
-                  - key_responsibilities: exact
-                    responsibilities to build from
-                  - existing rubric: refine if given,
-                    build fresh if null
-
-                  YOUR JOB:
-                  Build one criterion per
-                  responsibility.
-                  Use document_context to calibrate:
-                  - language depth and tone
-                  - seniority of scoring levels
-                  - weight distribution
-                    use job_purpose and competencies
-                    to decide what weighs more
-
-                  Each criterion must have:
-                  - id: "C1", "C2" etc
-                  - name: short clear name
-                  - description: what is evaluated
-                  - levels: scoring 1 to 5 with
-                    observable descriptions
-                  - linked_responsibility: exact
-                    responsibility it maps to
-                  - weight: decimal, all weights
-                    must sum to exactly 1.0
-
-                  Return ONLY valid JSON.
-                  No explanation, no preamble,
-                  no markdown code blocks.
-
-                  Format:
-                  {
-                    "title": "Rubric for [job title]",
-                    "version": 1,
-                    "total_weight": 1.0,
-                    "criteria": [
-                      {
-                        "id": "C1",
-                        "name": "...",
-                        "description": "...",
-                        "levels": {
-                          "1": "...",
-                          "2": "...",
-                          "3": "...",
-                          "4": "...",
-                          "5": "..."
-                        },
-                        "linked_responsibility": "...",
-                        "weight": 0.00
-                      }
-                    ]
-                  }""",
+        prompt=(
+            f"{context_hint}\n\n"
+            f"Responsibilities:\n{responsibilities_text}\n\n"
+            "Build one criterion per responsibility. "
+            f"Distribute weights (each ~{equal_weight}, total must be 1.0). "
+            "Return ONLY valid JSON, no markdown:\n"
+            '{"title":"Rubric for [role]","version":1,"total_weight":1.0,'
+            '"criteria":[{"id":"C1","name":"...","description":"...","linked_responsibility":"...","weight":0.20}]}'
+        ),
+        system_prompt=(
+            "You are a rubric builder. "
+            "Return ONLY valid JSON with no explanation or markdown. "
+            "One criterion per responsibility. Weights must sum to 1.0."
+        ),
         max_tokens=800,
-        temperature=0.2
+        temperature=0.1
     )
 
     try:
-        rubric = json.loads(response)
+        rubric = json.loads(_strip_fences(response))
     except json.JSONDecodeError:
-        logger.warning("rubric_builder_agent: "
-                       "failed to parse JSON response")
-        rubric = {}
+        logger.warning("rubric_builder_agent: failed to parse JSON — using fallback")
+        rubric = {
+            "title": "Draft Rubric",
+            "version": 1,
+            "total_weight": 1.0,
+            "criteria": [
+                {
+                    "id": f"C{i+1}",
+                    "name": f"Criterion {i+1}",
+                    "description": r,
+                    "linked_responsibility": r,
+                    "weight": equal_weight
+                }
+                for i, r in enumerate(key_responsibilities)
+            ]
+        }
+
+    criteria = rubric.get("criteria", [])
+    rubric["criteria"] = _normalize_weights(criteria)
+    rubric["total_weight"] = round(sum(c["weight"] for c in rubric["criteria"]), 4)
 
     return rubric
