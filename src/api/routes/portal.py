@@ -330,12 +330,22 @@ def candidate_detail(job_id: str, candidate_id: str):
             "concerns": result.get("concerns", []),
         }
 
+        # Fetch resume URL from applications collection
+        application = run_async(mongo.find_one(
+            "applications",
+            {"job_id": job_id, "student_id": candidate_id},
+        ))
+        resume_url = None
+        if application:
+            resume_url = application.get("document_url") or application.get("document") or None
+
         return render_template(
             "candidate_detail.html",
             active_page="jobs",
             job=job_data,
             result=result_data,
             total_candidates=len(all_results),
+            resume_url=resume_url,
         )
 
     except Exception as e:
@@ -407,3 +417,51 @@ def scoring_matrix():
             criteria=[],
             rubrics=[],
         )
+
+
+@portal_bp.route("/jobs/<job_id>/candidates/<candidate_id>/resume")
+def candidate_resume(job_id: str, candidate_id: str):
+    """Display resume preview for a candidate."""
+    try:
+        mongo = get_mongo_service()
+        run_async(mongo.connect())
+
+        # Get job
+        job = run_async(mongo.find_one("job_listings", {"_id": job_id}))
+        if not job:
+            flash("Job not found", "danger")
+            return redirect(url_for("portal.jobs_list"))
+
+        # Get candidate name from screening result
+        result_id = f"{job_id}-{candidate_id}"
+        result = run_async(mongo.find_one("screening_results", {"_id": result_id}))
+        candidate_name = result.get("candidate_name", "Unknown") if result else "Unknown"
+
+        # Get resume URL from applications
+        application = run_async(mongo.find_one(
+            "applications",
+            {"job_id": job_id, "student_id": candidate_id},
+        ))
+
+        resume_url = None
+        if application:
+            resume_url = application.get("document_url") or application.get("document") or None
+
+        job_data = {
+            "id": job.get("_id"),
+            "title": job.get("title", "Untitled"),
+        }
+
+        return render_template(
+            "resume_preview.html",
+            active_page="jobs",
+            job=job_data,
+            candidate_id=candidate_id,
+            candidate_name=candidate_name,
+            resume_url=resume_url,
+        )
+
+    except Exception as e:
+        logger.error(f"Resume preview error: {e}")
+        flash(f"Error loading resume: {e}", "danger")
+        return redirect(url_for("portal.candidate_detail", job_id=job_id, candidate_id=candidate_id))
