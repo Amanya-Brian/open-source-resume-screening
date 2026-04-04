@@ -68,11 +68,11 @@
         <div class="card h-100">
             <div class="card-body text-center">
                 <h6 class="text-muted mb-2">Percentage Score</h6>
-                <div class="display-4 fw-bold {% if result.percentage >= 80 %}text-success{% elif result.percentage >= 65 %}text-warning{% else %}text-danger{% endif %}">
+                <div class="display-4 fw-bold {% if result.percentage >= 65 %}text-success{% elif result.percentage >= 50 %}text-warning{% else %}text-danger{% endif %}">
                     {{ "%.1f"|format(result.percentage) }}%
                 </div>
                 <div class="progress mt-2" style="height: 10px;">
-                    <div class="progress-bar {% if result.percentage >= 80 %}bg-success{% elif result.percentage >= 65 %}bg-warning{% else %}bg-danger{% endif %}"
+                    <div class="progress-bar {% if result.percentage >= 65 %}bg-success{% elif result.percentage >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
                          style="width: {{ result.percentage }}%"></div>
                 </div>
             </div>
@@ -199,20 +199,154 @@
     </div>
 </div>
 
-<!-- Back Button -->
+<!-- Back / Export Buttons -->
 <div class="mt-4 d-flex gap-2">
     <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i> Back to Job
     </a>
-    {% if resume_url %}
-    <a href="{{ url_for('portal.candidate_resume', job_id=job.id, candidate_id=result.candidate_id) }}"
-       class="btn btn-primary">
-        <i class="bi bi-file-earmark-pdf me-1"></i> View Resume
-    </a>
-    {% else %}
-    <button class="btn btn-outline-secondary" disabled title="No resume available">
-        <i class="bi bi-file-earmark-pdf me-1"></i> No Resume Available
+    <button class="btn btn-outline-success" onclick="exportCandidateCSV()">
+        <i class="bi bi-filetype-csv me-1"></i>Export CSV
     </button>
-    {% endif %}
+    <button class="btn btn-outline-danger" onclick="exportCandidatePDF()">
+        <i class="bi bi-file-earmark-pdf me-1"></i>Export PDF
+    </button>
 </div>
+
+{% block extra_scripts %}
+<script>
+const CANDIDATE = {
+    name:        {{ result.candidate_name | tojson }},
+    job:         {{ job.title | tojson }},
+    rank:        {{ result.rank }},
+    score:       {{ "%.2f" | format(result.total_weighted_score) }},
+    percentage:  {{ "%.1f" | format(result.percentage) }},
+    recommendation: {{ result.recommendation | tojson }},
+    criteria: [
+        {% for s in result.criteria_scores %}
+        {
+            name:    {{ s.criterion_name | tojson }},
+            weight:  {{ (s.weight * 100) | int }},
+            raw:     {{ s.raw_score }},
+            weighted:{{ "%.2f" | format(s.weighted_score) }},
+            evidence:{{ s.evidence | tojson }},
+        },
+        {% endfor %}
+    ],
+    strengths: {{ result.strengths | tojson }},
+    concerns:  {{ result.concerns  | tojson }},
+};
+
+function exportCandidateCSV() {
+    const rows = [
+        ['Field', 'Value'],
+        ['Candidate', CANDIDATE.name],
+        ['Job', CANDIDATE.job],
+        ['Rank', '#' + CANDIDATE.rank],
+        ['Total Score', CANDIDATE.score + ' / 5.0'],
+        ['Percentage', CANDIDATE.percentage + '%'],
+        ['Recommendation', CANDIDATE.recommendation],
+        [],
+        ['Criterion', 'Weight (%)', 'Raw Score (/5)', 'Weighted Score', 'Evidence'],
+        ...CANDIDATE.criteria.map(c => [c.name, c.weight, c.raw, c.weighted, c.evidence]),
+        [],
+        ['Strengths'],
+        ...CANDIDATE.strengths.map(s => [s]),
+        [],
+        ['Concerns'],
+        ...CANDIDATE.concerns.map(c => [c]),
+    ];
+
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${CANDIDATE.name.replace(/\s+/g,'_')}_screening.csv`;
+    a.click();
+}
+
+function exportCandidatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const DARK = [73, 22, 26];
+    let y = 14;
+
+    // Header
+    doc.setFontSize(15);
+    doc.setTextColor(...DARK);
+    doc.text(CANDIDATE.name, 14, y); y += 7;
+    doc.setFontSize(10);
+    doc.setTextColor(80);
+    doc.text(`Applying for: ${CANDIDATE.job}`, 14, y); y += 5;
+    doc.text(`Exported: ${new Date().toLocaleDateString()}`, 14, y); y += 8;
+
+    // Summary box
+    doc.setFontSize(10);
+    doc.setTextColor(0);
+    const summary = [
+        ['Rank', '#' + CANDIDATE.rank],
+        ['Total Score', CANDIDATE.score + ' / 5.0'],
+        ['Percentage', CANDIDATE.percentage + '%'],
+        ['Recommendation', CANDIDATE.recommendation],
+    ];
+    doc.autoTable({
+        body: summary,
+        startY: y,
+        styles: { fontSize: 10, cellPadding: 3 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } },
+        theme: 'plain',
+        tableLineColor: [220, 220, 220],
+        tableLineWidth: 0.3,
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    // Criteria table
+    doc.setFontSize(11);
+    doc.setTextColor(...DARK);
+    doc.text('Scoring Breakdown', 14, y); y += 4;
+    doc.autoTable({
+        head: [['Criterion', 'Weight', 'Score /5', 'Weighted', 'Evidence']],
+        body: CANDIDATE.criteria.map(c => [c.name, c.weight + '%', c.raw, c.weighted, c.evidence]),
+        startY: y,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: DARK, textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [245, 248, 248] },
+        columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' } },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    // Strengths
+    if (CANDIDATE.strengths.length) {
+        doc.setFontSize(11);
+        doc.setTextColor(21, 128, 61);
+        doc.text('Strengths', 14, y); y += 4;
+        doc.autoTable({
+            body: CANDIDATE.strengths.map(s => [s]),
+            startY: y,
+            styles: { fontSize: 8, cellPadding: 2, textColor: 40 },
+            theme: 'plain',
+            tableLineColor: [220, 220, 220],
+            tableLineWidth: 0.2,
+        });
+        y = doc.lastAutoTable.finalY + 6;
+    }
+
+    // Concerns
+    if (CANDIDATE.concerns.length) {
+        doc.setFontSize(11);
+        doc.setTextColor(185, 28, 28);
+        doc.text('Concerns', 14, y); y += 4;
+        doc.autoTable({
+            body: CANDIDATE.concerns.map(c => [c]),
+            startY: y,
+            styles: { fontSize: 8, cellPadding: 2, textColor: 40 },
+            theme: 'plain',
+            tableLineColor: [220, 220, 220],
+            tableLineWidth: 0.2,
+        });
+    }
+
+    doc.save(`${CANDIDATE.name.replace(/\s+/g,'_')}_screening.pdf`);
+}
+</script>
+{% endblock %}
 {% endblock %}
