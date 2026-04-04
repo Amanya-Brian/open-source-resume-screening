@@ -139,6 +139,49 @@
     </h2>
 </div>
 
+<!-- Jobs without a rubric -->
+{% if jobs_without_rubric %}
+<div class="card mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-cpu me-2"></i>Generate Rubrics
+        </h5>
+        <span class="text-muted small">{{ jobs_without_rubric|length }} job{{ 's' if jobs_without_rubric|length != 1 }} without a rubric</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Job</th>
+                        <th>Company</th>
+                        <th class="text-end" style="width:140px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs_without_rubric %}
+                    <tr>
+                        <td class="fw-semibold">{{ job.title }}</td>
+                        <td>{{ job.company or '-' }}</td>
+                        <td class="text-end">
+                            <button
+                                type="button"
+                                class="btn btn-sm"
+                                style="background:var(--secondary);color:#fff;font-size:.8rem;padding:5px 14px;border-radius:7px;font-weight:600;"
+                                onclick="generateRubric('{{ job.id }}')"
+                            >
+                                <i class="bi bi-cpu me-1"></i>Generate
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Rubrics overview table -->
 <div class="card mb-4">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -270,6 +313,31 @@
         </div>
     </div>
 </div>
+
+<!-- Generate Rubric Progress Modal -->
+<div class="modal fade" id="rubricGenerateModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:500px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-semibold" style="font-size:.95rem;">
+                    <i class="bi bi-cpu me-2"></i>Generating Rubric
+                </h5>
+            </div>
+            <div class="modal-body py-4">
+                <p class="text-muted small mb-3" id="rubricGenerateSubtitle">
+                    Running the multi-agent pipeline. This may take a few minutes with a local model.
+                </p>
+                <div id="rubricGenerateSteps"></div>
+                <div id="rubricGenerateError" class="alert alert-danger mt-3 mb-0 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-modal-cancel d-none" id="rubricGenerateCloseBtn"
+                        data-bs-dismiss="modal" onclick="location.reload()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <!-- Edit Criterion Modal -->
 <div class="modal fade" id="criterionEditModal" tabindex="-1" aria-hidden="true">
@@ -812,6 +880,109 @@ async function saveCriterion() {
         }
     }
 }
+
+function generateRubric(jobId) {
+    const modalEl   = document.getElementById('rubricGenerateModal');
+    const modal     = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const stepsEl   = document.getElementById('rubricGenerateSteps');
+    const errorEl   = document.getElementById('rubricGenerateError');
+    const closeBtn  = document.getElementById('rubricGenerateCloseBtn');
+    const subtitleEl = document.getElementById('rubricGenerateSubtitle');
+
+    // reset
+    stepsEl.innerHTML  = '';
+    errorEl.classList.add('d-none');
+    closeBtn.classList.add('d-none');
+    subtitleEl.textContent = 'Running the multi-agent pipeline. This may take a few minutes with a local model.';
+    modal.show();
+
+    const stepMap = {};
+
+    function addOrUpdateStep(message, status) {
+        const key = message;
+        if (stepMap[key]) {
+            const dot = stepMap[key].querySelector('.step-dot');
+            if (status === 'done') {
+                dot.style.background = '#198754';
+                dot.innerHTML = '<i class="bi bi-check" style="font-size:.65rem;color:#fff;"></i>';
+            }
+            return;
+        }
+        const div = document.createElement('div');
+        div.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #f1f3f5;';
+        div.innerHTML = `
+            <span class="step-dot" style="
+                width:20px;height:20px;border-radius:50%;flex-shrink:0;margin-top:1px;
+                background:#0d6efd;display:flex;align-items:center;justify-content:center;">
+                <span class="spinner-border spinner-border-sm text-white" style="width:.6rem;height:.6rem;border-width:1.5px;"></span>
+            </span>
+            <span style="font-size:.83rem;color:#212529;">${message}</span>
+        `;
+        stepMap[key] = div;
+        stepsEl.appendChild(div);
+    }
+
+    const es = new EventSource(`/api/rubrics/jobs/${jobId}/generate`);
+
+    es.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+
+        if (event.type === 'start') {
+            addOrUpdateStep('Pipeline started', 'running');
+        }
+
+        if (event.type === 'step') {
+            const msg = event.data.message || '';
+            // mark previous step done, add new one
+            Object.values(stepMap).forEach(el => {
+                const dot = el.querySelector('.step-dot');
+                const spinner = dot.querySelector('.spinner-border');
+                if (spinner) {
+                    dot.style.background = '#198754';
+                    dot.innerHTML = '<i class="bi bi-check" style="font-size:.65rem;color:#fff;"></i>';
+                }
+            });
+            addOrUpdateStep(msg, 'running');
+            // scroll to bottom
+            stepsEl.scrollTop = stepsEl.scrollHeight;
+        }
+
+        if (event.type === 'done') {
+            // mark all steps done
+            Object.values(stepMap).forEach(el => {
+                const dot = el.querySelector('.step-dot');
+                dot.style.background = '#198754';
+                dot.innerHTML = '<i class="bi bi-check" style="font-size:.65rem;color:#fff;"></i>';
+            });
+            subtitleEl.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Rubric generated successfully!</span>';
+            closeBtn.classList.remove('d-none');
+            es.close();
+        }
+
+        if (event.type === 'error') {
+            errorEl.textContent = event.data.message || 'An error occurred during generation.';
+            errorEl.classList.remove('d-none');
+            // mark last step as failed
+            const allSteps = Object.values(stepMap);
+            if (allSteps.length) {
+                const last = allSteps[allSteps.length - 1];
+                const dot = last.querySelector('.step-dot');
+                dot.style.background = '#dc3545';
+                dot.innerHTML = '<i class="bi bi-x" style="font-size:.65rem;color:#fff;"></i>';
+            }
+            closeBtn.classList.remove('d-none');
+            es.close();
+        }
+    };
+
+    es.onerror = () => {
+        errorEl.textContent = 'Connection lost. The server may have closed the stream.';
+        errorEl.classList.remove('d-none');
+        closeBtn.classList.remove('d-none');
+        es.close();
+    };
+}
+
 
 async function deleteRubric() {
     if (!currentRubricId) {
