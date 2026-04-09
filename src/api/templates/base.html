@@ -212,6 +212,14 @@
                         </a>
                     </li>
                 </ul>
+                <div class="ms-3 d-flex align-items-center gap-2" style="border-left:1px solid rgba(255,255,255,.2);padding-left:1rem;">
+                    {% if session.user %}
+                    <span class="text-white-50" style="font-size:.8rem;">{{ session.user.get('email','') }}</span>
+                    {% endif %}
+                    <a href="{{ url_for('auth.logout') }}" class="nav-link" style="padding:0.4rem 0.7rem !important;">
+                        <i class="bi bi-box-arrow-right me-1"></i>Logout
+                    </a>
+                </div>
             </div>
         </div>
     </nav>
