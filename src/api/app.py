@@ -34,17 +34,49 @@ def create_app() -> Flask:
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     # Register blueprints
+    from src.api.routes.auth import auth_bp
     from src.api.routes.health import health_bp
     from src.api.routes.screening import screening_bp
     from src.api.routes.data_sync import data_sync_bp
     from src.api.routes.rubrics import rubrics_bp
     from src.api.routes.portal import portal_bp
 
+    app.register_blueprint(auth_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(screening_bp, url_prefix="/api/screening")
     app.register_blueprint(data_sync_bp, url_prefix="/api")
     app.register_blueprint(rubrics_bp, url_prefix="/api")
     app.register_blueprint(portal_bp)  # Portal at root for web interface
+
+    # Redirect unauthenticated / expired-token requests to /login
+    import requests as http
+    from flask import request as req, redirect, url_for, session
+
+    OPEN_ROUTES = {"/login", "/health"}
+    API_BASE = os.environ.get("TALENTMATCH_API_URL", "http://localhost:5000")
+
+    @app.before_request
+    def require_login():
+        if req.path in OPEN_ROUTES or req.path.startswith("/api/"):
+            return None
+
+        token = session.get("access_token")
+        if not token:
+            return redirect(url_for("auth.login"))
+
+        # Verify token is still valid with the backend
+        try:
+            resp = http.post(
+                f"{API_BASE}/api/v1/auth/token/verify",
+                json={"token": token},
+                timeout=5
+            )
+            if resp.status_code != 200 or not resp.json().get("valid"):
+                session.clear()
+                return redirect(url_for("auth.login"))
+        except Exception:
+            # If verify call fails (network), let them through — don't lock out on infra issues
+            pass
 
     # Register error handlers
     register_error_handlers(app)
