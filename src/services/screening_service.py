@@ -977,12 +977,10 @@ class ScreeningService:
     ) -> None:
         """Store candidate screening results in MongoDB (all writes run in parallel).
 
-        LLM and rule-based results go to separate collections to avoid unique-index
-        conflicts on (job_id, candidate_id):
-          rule_based → screening_results
-          llm        → screening_results_llm
+        All results go to screening_results regardless of method — upsert by _id
+        means re-screening simply overwrites the previous run.
         """
-        collection = "screening_results_llm" if method == "llm" else "screening_results"
+        collection = "screening_results"
 
         def _build_doc(eval: CandidateEvaluation) -> dict:
             return {

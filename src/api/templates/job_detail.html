@@ -427,7 +427,11 @@ async function runScreening(jobId) {
 
     try {
         // POST kicks off screening immediately and returns a task_id
-        const startRes = await fetch(`/api/screening/jobs/${jobId}/screen`, { method: 'POST' });
+        const startRes = await fetch(`/api/screening/jobs/${jobId}/screen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'llm' }),
+        });
         const startData = await startRes.json();
         const taskId = startData.task_id;
 
