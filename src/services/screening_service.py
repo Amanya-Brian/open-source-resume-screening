@@ -116,9 +116,10 @@ class ScreeningService:
             resume_map = {}
         logger.info(f"Pre-fetched {len(resume_map)}/{total} resumes")
 
-        # Ollama processes one request at a time — concurrent requests just queue inside it
-        # and risk hitting the read timeout. Serialize LLM calls to prevent timeouts.
-        _sem = asyncio.Semaphore(1)
+        # LLM (Ollama) is single-threaded — concurrent requests queue internally and risk
+        # timeouts, so serialize when using LLM. Rule-based is pure CPU and safe to run
+        # fully in parallel.
+        _sem = asyncio.Semaphore(1 if self.use_llm else len(applications))
 
         async def _evaluate_one(idx: int, app: dict) -> CandidateEvaluation:
             async with _sem:
@@ -144,7 +145,8 @@ class ScreeningService:
             eval.detailed_notes = f"Rank #{i} of {len(evaluations)} candidates"
 
         # Store candidate results immediately (no fairness yet)
-        await self._store_screening_results(job_id, evaluations)
+        method = "llm" if self.use_llm else "rule_based"
+        await self._store_screening_results(job_id, evaluations, method=method)
 
         return evaluations
 
@@ -971,8 +973,17 @@ class ScreeningService:
         self,
         job_id: str,
         evaluations: list[CandidateEvaluation],
+        method: str = "rule_based",
     ) -> None:
-        """Store candidate screening results in MongoDB (all writes run in parallel)."""
+        """Store candidate screening results in MongoDB (all writes run in parallel).
+
+        LLM and rule-based results go to separate collections to avoid unique-index
+        conflicts on (job_id, candidate_id):
+          rule_based → screening_results
+          llm        → screening_results_llm
+        """
+        collection = "screening_results_llm" if method == "llm" else "screening_results"
+
         def _build_doc(eval: CandidateEvaluation) -> dict:
             return {
                 "_id": f"{job_id}-{eval.candidate_id}",
@@ -996,19 +1007,20 @@ class ScreeningService:
                 ],
                 "strengths": eval.strengths,
                 "concerns": eval.concerns,
+                "screening_method": method,
             }
 
         docs = [_build_doc(ev) for ev in evaluations]
         await asyncio.gather(*[
             self.mongo.update_one(
-                "screening_results",
+                collection,
                 {"_id": doc["_id"]},
                 {"$set": doc},
                 upsert=True,
             )
             for doc in docs
         ])
-        logger.info(f"Stored {len(evaluations)} screening results for job {job_id}")
+        logger.info(f"Stored {len(evaluations)} results in '{collection}' for job {job_id}")
 
     async def _store_fairness_report(
         self,

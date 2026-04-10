@@ -25,7 +25,7 @@ class LLMService:
         """
         self.settings = settings or get_settings()
         self.ollama_url = "http://localhost:11434"
-        self.model_name = getattr(self.settings, 'ollama_model', 'llama3:latest')
+        self.model_name = getattr(self.settings, 'ollama_model', 'qwen2.5:1.5b')
         self._initialized = False
         self._available_models = []
 
@@ -35,6 +35,11 @@ class LLMService:
         if cls._instance is None:
             cls._instance = cls(settings)
         return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Force the singleton to be recreated on next get_instance() call."""
+        cls._instance = None
 
     def initialize(self) -> None:
         """Initialize and verify Ollama connection."""
@@ -103,13 +108,14 @@ class LLMService:
                     "model": self.model_name,
                     "messages": messages,
                     "stream": False,
+                    "format": "json",   # Constrain to JSON output — faster, no preamble
                     "options": {
                         "temperature": temperature,
                         "num_predict": max_tokens,
-                        "num_ctx": 2048,  # Shrink context window — biggest speed lever for llama3
+                        "num_ctx": 1024,  # qwen2.5:1.5b fits easily; smaller = faster KV cache
                     },
                 },
-                timeout=300,
+                timeout=60,  # qwen2.5:1.5b should respond well within 60s; fail fast otherwise
             )
             response.raise_for_status()
 
