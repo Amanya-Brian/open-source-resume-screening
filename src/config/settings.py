@@ -52,8 +52,8 @@ class Settings(BaseSettings):
         description="Ollama API URL",
     )
     ollama_model: str = Field(
-        default="llama3:latest",
-        description="Ollama model name (e.g., llama3:latest, mistral:latest)",
+        default="qwen2.5:1.5b",
+        description="Ollama model name (e.g., qwen2.5:1.5b, llama3:latest)",
     )
 
     # Legacy LLM Settings (Hugging Face - fallback)
