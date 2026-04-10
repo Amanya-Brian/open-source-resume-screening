@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
-from flask import Blueprint, render_template, flash, redirect, url_for
+from flask import Blueprint, render_template, flash, redirect, request, url_for
 
 from src.services.mongo_service import MongoService
 from src.models.scoring import DefaultCriteria
@@ -283,15 +283,18 @@ def candidate_detail(job_id: str, candidate_id: str):
             flash("Job not found", "danger")
             return redirect(url_for("portal.jobs_list"))
 
-        # Get screening result for this candidate
-        result_id = f"{job_id}-{candidate_id}"
-        result = run_async(mongo.find_one("screening_results", {"_id": result_id}))
+        # Determine which screening method to display (?method=llm or ?method=rule_based)
+        requested_method = request.args.get("method")
+
+        result = run_async(mongo.find_one("screening_results", {"_id": f"{job_id}-{candidate_id}"}))
 
         if not result:
             flash("Candidate screening result not found", "warning")
             return redirect(url_for("portal.job_detail", job_id=job_id))
 
-        # Get all results to determine rank
+        active_method = result.get("screening_method", "llm")
+        other_method = None
+
         all_results = run_async(mongo.find_many("screening_results", {"job_id": job_id}))
         all_results.sort(key=lambda r: r.get("total_weighted_score", 0), reverse=True)
 
@@ -328,16 +331,24 @@ def candidate_detail(job_id: str, candidate_id: str):
             "criteria_scores": criteria_scores,
             "strengths": result.get("strengths", []),
             "concerns": result.get("concerns", []),
+            "screening_method": active_method,
         }
 
-        # Fetch resume URL from applications collection
+        # Fetch resume data for preview
         application = run_async(mongo.find_one(
             "applications",
             {"job_id": job_id, "student_id": candidate_id},
         ))
         resume_url = None
+        cover_letter_text = ""
+        resume_raw_text = ""
         if application:
             resume_url = application.get("document_url") or application.get("document") or None
+            cover_letter_text = application.get("cover_letter", "")
+
+        resume_doc = run_async(mongo.find_one("resumes", {"student_id": candidate_id}))
+        if resume_doc:
+            resume_raw_text = resume_doc.get("raw_text", "")
 
         return render_template(
             "candidate_detail.html",
@@ -345,7 +356,10 @@ def candidate_detail(job_id: str, candidate_id: str):
             job=job_data,
             result=result_data,
             total_candidates=len(all_results),
+            other_method=None,
             resume_url=resume_url,
+            cover_letter_text=cover_letter_text,
+            resume_raw_text=resume_raw_text,
         )
 
     except Exception as e:

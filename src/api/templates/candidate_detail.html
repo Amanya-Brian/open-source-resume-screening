@@ -30,7 +30,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-4 text-end">
+            <div class="col-md-4 text-end d-flex flex-column align-items-end gap-2">
                 {% if 'STRONG YES' in result.recommendation %}
                 <span class="recommendation-badge badge-strong-yes fs-5">
                     <i class="bi bi-star-fill me-1"></i>{{ result.recommendation }}
@@ -48,6 +48,24 @@
                     <i class="bi bi-x-circle-fill me-1"></i>{{ result.recommendation }}
                 </span>
                 {% endif %}
+                <div class="d-flex align-items-center gap-2">
+                    {% if result.screening_method == 'llm' %}
+                    <span class="badge" style="background:#0d6efd;font-size:.75rem;padding:.4em .7em;">
+                        <i class="bi bi-cpu me-1"></i>LLM
+                    </span>
+                    {% else %}
+                    <span class="badge" style="background:#527575;font-size:.75rem;padding:.4em .7em;">
+                        <i class="bi bi-lightning-fill me-1"></i>Rule-Based
+                    </span>
+                    {% endif %}
+                    {% if other_method %}
+                    <a href="?method={{ other_method }}"
+                       class="btn btn-sm btn-outline-secondary"
+                       title="Switch to {{ 'LLM' if other_method == 'llm' else 'Rule-Based' }} view">
+                        <i class="bi bi-arrow-left-right me-1"></i>View {{ 'LLM' if other_method == 'llm' else 'Rule-Based' }}
+                    </a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -200,16 +218,69 @@
 </div>
 
 <!-- Back / Export Buttons -->
-<div class="mt-4 d-flex gap-2">
+<div class="mt-4 d-flex gap-2 flex-wrap">
     <a href="{{ url_for('portal.job_detail', job_id=job.id) }}" class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i> Back to Job
     </a>
+    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resumeModal">
+        <i class="bi bi-file-person me-1"></i>Preview Resume
+    </button>
     <button class="btn btn-outline-success" onclick="exportCandidateCSV()">
         <i class="bi bi-filetype-csv me-1"></i>Export CSV
     </button>
     <button class="btn btn-outline-danger" onclick="exportCandidatePDF()">
         <i class="bi bi-file-earmark-pdf me-1"></i>Export PDF
     </button>
+</div>
+
+<!-- Resume Preview Modal -->
+<div class="modal fade" id="resumeModal" tabindex="-1" aria-labelledby="resumeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resumeModalLabel">
+                    <i class="bi bi-file-person me-2"></i>{{ result.candidate_name }} — Resume &amp; Application
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                {% if resume_url %}
+                <!-- PDF viewer -->
+                <iframe src="{{ resume_url }}" style="width:100%;height:80vh;border:none;"
+                        title="Resume PDF"></iframe>
+                {% else %}
+                <!-- Text fallback -->
+                <div class="p-4">
+                    {% if cover_letter_text %}
+                    <h6 class="text-muted text-uppercase fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                        <i class="bi bi-envelope me-1"></i>Cover Letter
+                    </h6>
+                    <div class="p-3 mb-4 rounded" style="background:#f8f9fa;white-space:pre-wrap;font-family:inherit;font-size:.9rem;line-height:1.6;max-height:35vh;overflow-y:auto;">{{ cover_letter_text }}</div>
+                    {% endif %}
+                    {% if resume_raw_text %}
+                    <h6 class="text-muted text-uppercase fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                        <i class="bi bi-file-text me-1"></i>Resume Text
+                    </h6>
+                    <div class="p-3 rounded" style="background:#f8f9fa;white-space:pre-wrap;font-family:monospace;font-size:.82rem;line-height:1.6;max-height:45vh;overflow-y:auto;">{{ resume_raw_text }}</div>
+                    {% else %}
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-file-earmark-x fs-1 d-block mb-2"></i>
+                        No resume text available for this candidate.
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% if resume_url %}
+            <div class="modal-footer">
+                <a href="{{ resume_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-box-arrow-up-right me-1"></i>Open in New Tab
+                </a>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 {% block extra_scripts %}
