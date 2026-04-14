@@ -307,7 +307,10 @@
                     <p class="text-muted small mb-0">Loading criteria…</p>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer justify-content-between">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="openAddCriterionModal()">
+                    <i class="bi bi-plus-lg me-1"></i>Add Criterion
+                </button>
                 <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Done</button>
             </div>
         </div>
@@ -339,16 +342,17 @@
 </div>
 
 
-<!-- Edit Criterion Modal -->
+<!-- Edit / Add Criterion Modal -->
 <div class="modal fade" id="criterionEditModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
         <div class="modal-content">
             <div class="modal-header pb-2">
                 <div>
-                    <h5 class="modal-title fw-semibold mb-0" style="font-size:.95rem;">Edit Criterion</h5>
+                    <h5 class="modal-title fw-semibold mb-0" style="font-size:.95rem;" id="criterionEditModalTitle">Edit Criterion</h5>
                 </div>
                 <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <input type="hidden" id="criterionEditMode" value="edit"><!-- "edit" or "add" -->
 
             <div class="modal-body pt-3">
                 <form autocomplete="off" onsubmit="return false;">
@@ -496,8 +500,8 @@ async function viewRubricMatrix(rubricId) {
         const totalPct = Math.round(totalWeight * 100);
         const isComplete = totalPct === 100;
 
-        // Update modal title to actual rubric name
-        if (titleEl) titleEl.textContent = rubric.name || 'Rubric';
+        // Update modal title to actual rubric name (preserve icon)
+        if (titleEl) titleEl.innerHTML = `<i class="bi bi-grid-3x3 me-2"></i>${rubric.name || 'Rubric'}`;
 
         const criteriaRows = criteria.length > 0 ? criteria.map((c, idx) => {
             const pct = Math.round((c.weight || 0) * 100);
@@ -680,13 +684,22 @@ async function openEditRubricModal(rubricId, rubricName) {
                     ${weightPercent}%
                 </span>
 
-                <!-- Edit icon button — only passes key + numbers, no strings -->
+                <!-- Edit button -->
                 <button type="button"
                         class="rubric-action-btn"
                         style="flex-shrink:0;"
                         onclick="openEditCriterionModal('${rubricId}', '${c.key}', ${weightPercent}, ${otherWeightsPercent})"
                         data-bs-toggle="tooltip" data-bs-placement="top" title="Edit criterion">
                     <i class="bi bi-pencil"></i>
+                </button>
+
+                <!-- Delete button -->
+                <button type="button"
+                        class="rubric-action-btn btn-delete"
+                        style="flex-shrink:0;"
+                        onclick="deleteCriterionFromRubric('${rubricId}', '${c.key}', '${c.name.replace(/'/g,"\\'")}')"
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Delete criterion">
+                    <i class="bi bi-trash"></i>
                 </button>
             </div>`;
         }).join('') : `
@@ -741,30 +754,30 @@ function openDeleteRubricModal(rubricId, rubricName) {
     modal.show();
 }
 
-function openEditCriterionModal(rubricId, criterionKey, currentWeightPercent, otherWeightsPercent) {
+function _openCriterionModal(rubricId, criterionKey, name, description, currentWeightPercent, otherWeightsPercent, mode) {
     currentRubricId = rubricId;
     currentCriterionKey = criterionKey;
     currentCriterionWeight = currentWeightPercent;
-
-    // Look up name + description from the cached criteria array (safe — no inline string escaping)
-    const criterion = currentCriteria.find(c => c.key === criterionKey) || {};
-    currentCriterionName = criterion.name || criterionKey;
-    currentCriterionDescription = criterion.description || '';
+    currentCriterionName = name;
+    currentCriterionDescription = description;
 
     const maxAllowed = 100 - (otherWeightsPercent || 0);
 
-    const nameEl = document.getElementById('criterionEditName');
-    const descEl = document.getElementById('criterionEditDescription');
-    const inputEl = document.getElementById('criterionEditWeightInput');
-    const hintEl = document.getElementById('criterionEditWeightHint');
-    const saveBtn = document.getElementById('criterionEditSaveBtn');
+    const titleEl  = document.getElementById('criterionEditModalTitle');
+    const modeEl   = document.getElementById('criterionEditMode');
+    const nameEl   = document.getElementById('criterionEditName');
+    const descEl   = document.getElementById('criterionEditDescription');
+    const inputEl  = document.getElementById('criterionEditWeightInput');
+    const hintEl   = document.getElementById('criterionEditWeightHint');
+    const saveBtn  = document.getElementById('criterionEditSaveBtn');
 
-    if (nameEl) nameEl.value = currentCriterionName;
-    if (descEl) descEl.value = currentCriterionDescription;
+    if (titleEl) titleEl.textContent = mode === 'add' ? 'Add Criterion' : 'Edit Criterion';
+    if (modeEl)  modeEl.value = mode;
+    if (nameEl)  nameEl.value = name;
+    if (descEl)  descEl.value = description;
     if (inputEl) {
-        inputEl.value = currentCriterionWeight;
+        inputEl.value = currentWeightPercent;
         inputEl.max = maxAllowed;
-        // Remove any old listener before adding a new one
         inputEl.oninput = () => {
             const val = Number(inputEl.value);
             if (!Number.isNaN(val) && hintEl) {
@@ -787,97 +800,131 @@ function openEditCriterionModal(rubricId, criterionKey, currentWeightPercent, ot
     }
     if (saveBtn) saveBtn.disabled = false;
 
-    const modalEl = document.getElementById('criterionEditModal');
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('criterionEditModal')).show();
+}
+
+function openEditCriterionModal(rubricId, criterionKey, currentWeightPercent, otherWeightsPercent) {
+    const criterion = currentCriteria.find(c => c.key === criterionKey) || {};
+    _openCriterionModal(
+        rubricId, criterionKey,
+        criterion.name || criterionKey,
+        criterion.description || '',
+        currentWeightPercent, otherWeightsPercent,
+        'edit'
+    );
+}
+
+function openAddCriterionModal() {
+    if (!currentRubricId) return;
+    const totalPct = Math.round(currentCriteria.reduce((s, c) => s + (c.weight || 0), 0) * 100);
+    _openCriterionModal(
+        currentRubricId, null,
+        '', '',
+        0, totalPct,
+        'add'
+    );
+}
+
+async function deleteCriterionFromRubric(rubricId, criterionKey, criterionName) {
+    if (!confirm(`Delete criterion "${criterionName}"?\nThis cannot be undone.`)) return;
+
+    try {
+        // Remove locally from cache and build new criteria list
+        const updated = currentCriteria.filter(c => c.key !== criterionKey);
+        const response = await fetch(`/api/rubrics/${rubricId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ criteria: updated }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Delete failed');
+
+        if (typeof showToast === 'function') showToast('Criterion deleted.', 'success');
+        openEditRubricModal(rubricId, data.rubric?.name || '');
+    } catch (err) {
+        alert('Error deleting criterion: ' + err.message);
+    }
 }
 
 async function saveCriterion() {
-    if (!currentRubricId || !currentCriterionKey) {
-        if (typeof showToast === 'function') {
-            showToast('No criterion selected to update.', 'error');
-        }
+    const mode     = document.getElementById('criterionEditMode')?.value || 'edit';
+    const isAdd    = (mode === 'add');
+
+    if (!currentRubricId || (!isAdd && !currentCriterionKey)) {
+        if (typeof showToast === 'function') showToast('No criterion selected.', 'error');
         return;
     }
 
-    const nameEl = document.getElementById('criterionEditName');
-    const descEl = document.getElementById('criterionEditDescription');
+    const nameEl   = document.getElementById('criterionEditName');
+    const descEl   = document.getElementById('criterionEditDescription');
     const weightEl = document.getElementById('criterionEditWeightInput');
-    const hintEl = document.getElementById('criterionEditWeightHint');
-    const modalEl = document.getElementById('criterionEditModal');
-    const modal = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
+    const hintEl   = document.getElementById('criterionEditWeightHint');
+    const modalEl  = document.getElementById('criterionEditModal');
+    const modal    = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
 
-    const newName = nameEl ? nameEl.value.trim() : '';
-    const newDescription = descEl ? descEl.value.trim() : '';
-    const newWeight = Number(weightEl ? weightEl.value : '');
+    const newName        = nameEl?.value.trim() || '';
+    const newDescription = descEl?.value.trim() || '';
+    const newWeight      = Number(weightEl?.value ?? '');
 
     if (!newName) {
-        if (typeof showToast === 'function') {
-            showToast('Criterion name cannot be empty.', 'error');
-        } else {
-            alert('Criterion name cannot be empty.');
-        }
+        alert('Criterion name cannot be empty.');
         return;
     }
 
-    const maxAllowed = Number(weightEl ? weightEl.max : 100);
-    if (Number.isNaN(newWeight) || newWeight < 0 || newWeight > maxAllowed) {
-        const msg = newWeight > maxAllowed
+    const maxAllowed = Number(weightEl?.max ?? 100);
+    if (Number.isNaN(newWeight) || newWeight < 1 || newWeight > maxAllowed) {
+        alert(newWeight > maxAllowed
             ? `Weight cannot exceed ${maxAllowed}% (other criteria already use ${100 - maxAllowed}%).`
-            : 'Please enter a valid weight between 0 and 100.';
-        if (typeof showToast === 'function') {
-            showToast(msg, 'error');
-        } else {
-            alert(msg);
-        }
+            : 'Please enter a valid weight between 1 and 100.');
         return;
     }
 
-    // Use integer rounding before dividing to avoid float precision drift (e.g. 33/100 = 0.33000000000000002)
     const weightDecimal = Math.round(newWeight) / 100;
 
     try {
-        const response = await fetch(`/api/rubrics/${currentRubricId}/criteria/${currentCriterionKey}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: newName,
-                description: newDescription,
-                weight: weightDecimal,
-            }),
-        });
-        const data = await response.json();
+        let data;
+        if (isAdd) {
+            // Append new criterion and PUT the full list
+            const key = newName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+            const updatedCriteria = [
+                ...currentCriteria,
+                { key, name: newName, description: newDescription, weight: weightDecimal },
+            ];
+            const res = await fetch(`/api/rubrics/${currentRubricId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ criteria: updatedCriteria }),
+            });
+            data = await res.json();
+        } else {
+            // Update the criterion locally in currentCriteria, then PUT the full list
+            const updatedCriteria = currentCriteria.map(c =>
+                c.key === currentCriterionKey
+                    ? { ...c, name: newName, description: newDescription, weight: weightDecimal }
+                    : c
+            );
+            const res = await fetch(`/api/rubrics/${currentRubricId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ criteria: updatedCriteria }),
+            });
+            data = await res.json();
+        }
 
         if (!data.success) {
-            if (hintEl) {
-                hintEl.textContent = data.error || 'Update failed.';
-                hintEl.classList.add('text-danger');
-            }
-            if (typeof showToast === 'function') {
-                showToast(data.error || 'Failed to update criterion.', 'error');
-            } else {
-                alert(data.error || 'Failed to update criterion.');
-            }
+            if (hintEl) { hintEl.textContent = data.error || 'Save failed.'; hintEl.classList.add('text-danger'); }
+            alert(data.error || 'Failed to save criterion.');
             return;
         }
 
-        if (typeof showToast === 'function') {
-            showToast('Criterion updated successfully.', 'success');
-        }
-        // Wait for the hide animation to fully complete before reopening the parent modal,
-        // otherwise Bootstrap leaves a stray backdrop and locks the page.
+        if (typeof showToast === 'function') showToast(isAdd ? 'Criterion added.' : 'Criterion updated.', 'success');
         modalEl.addEventListener('hidden.bs.modal', () => {
             cleanupBackdrops();
             openEditRubricModal(currentRubricId, data.rubric?.name || '');
         }, { once: true });
         modal.hide();
-    } catch (error) {
-        console.error('Error updating criterion', error);
-        if (typeof showToast === 'function') {
-            showToast(`Error updating criterion: ${error.message}`, 'error');
-        } else {
-            alert(`Error updating criterion: ${error.message}`);
-        }
+    } catch (err) {
+        alert(`Error saving criterion: ${err.message}`);
     }
 }
 

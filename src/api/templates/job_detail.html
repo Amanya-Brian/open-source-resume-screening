@@ -108,7 +108,7 @@
 
                 {% if job.has_rubric %}
                 <button class="btn btn-action-secondary w-100" onclick="viewRubric('{{ job.id }}')">
-                    <i class="bi bi-file-earmark-text me-2"></i>View Rubric
+                    <i class="bi bi-pencil-square me-2"></i>Edit Rubric
                 </button>
                 {% else %}
                 <button class="btn btn-action-secondary w-100" onclick="generateRubric('{{ job.id }}')">
@@ -382,23 +382,61 @@
 </div>
 
 
-<!-- Rubric View Modal -->
+<!-- Rubric Edit Modal -->
 <div class="modal fade" id="rubricViewModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-grid-3x3 me-2"></i>Job Rubric
-                </h5>
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit Rubric</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="rubricViewContent">
                 <div class="text-center py-4">
-                    <div class="spinner-border text-primary mb-3" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                    <div class="spinner-border text-primary mb-3" role="status"></div>
                     <p class="text-muted mb-0">Loading rubric...</p>
                 </div>
+            </div>
+            <div class="modal-footer d-none" id="rubricModalFooter">
+                <span id="rubricWeightStatus" class="me-auto small fw-semibold"></span>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveRubricBtn" onclick="saveRubric()">
+                    <i class="bi bi-floppy me-1"></i>Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Criterion Edit Sub-Modal -->
+<div class="modal fade" id="criterionEditModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-pencil me-2"></i><span id="criterionEditTitle">Edit Criterion</span></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="criterionEditIdx">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Criterion Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="criterionEditName" placeholder="e.g. Technical Skills">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Weight (%) <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" id="criterionEditWeight" min="1" max="100" step="1" placeholder="e.g. 20">
+                    <div class="form-text" id="criterionWeightHint"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Description</label>
+                    <textarea class="form-control" id="criterionEditDesc" rows="3" placeholder="What this criterion evaluates..."></textarea>
+                </div>
+                <div id="criterionEditError" class="alert alert-danger d-none py-2 small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveCriterionEdit()">
+                    <i class="bi bi-check-lg me-1"></i>Apply
+                </button>
             </div>
         </div>
     </div>
@@ -584,153 +622,239 @@ function generateRubric(jobId) {
 }
 
 
-async function viewRubric(jobId) {
-    const modalEl = document.getElementById('rubricViewModal');
-    const modal = new bootstrap.Modal(modalEl);
-    const contentEl = document.getElementById('rubricViewContent');
+// ── Rubric editor state ───────────────────────────────────────────────────────
+let _rubric = null;  // { _id, name, description, criteria: [{key,name,weight,description},...] }
+let _rubricJobId = null;
 
-    contentEl.innerHTML = `
-        <div class="text-center py-4">
-            <div class="spinner-border text-primary mb-3" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="text-muted mb-0">Loading rubric...</p>
-        </div>
-    `;
+function _rubricTotalPct() {
+    return Math.round((_rubric.criteria || []).reduce((s, c) => s + (parseFloat(c.weight) || 0), 0) * 100);
+}
+
+function _updateWeightStatus() {
+    const pct = _rubricTotalPct();
+    const el = document.getElementById('rubricWeightStatus');
+    if (!el) return;
+    if (pct === 100) {
+        el.innerHTML = `<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Total weight: 100%</span>`;
+    } else if (pct > 100) {
+        el.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Total weight: ${pct}% — exceeds 100%</span>`;
+    } else {
+        el.innerHTML = `<span class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>Total weight: ${pct}% — ${100-pct}% unallocated</span>`;
+    }
+    document.getElementById('saveRubricBtn').disabled = (pct > 100);
+}
+
+function _renderCriteriaTable() {
+    const tbody = document.getElementById('rubricCriteriaBody');
+    if (!tbody) return;
+    const criteria = _rubric.criteria || [];
+    if (criteria.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4 small">No criteria yet. Use "Add Criterion" to add one.</td></tr>`;
+    } else {
+        tbody.innerHTML = criteria.map((c, idx) => {
+            const pct = Math.round((parseFloat(c.weight) || 0) * 100);
+            return `
+            <tr id="criterion-row-${idx}">
+                <td class="text-muted small ps-0" style="width:28px;">${idx+1}</td>
+                <td class="fw-semibold">${_esc(c.name)}</td>
+                <td style="width:120px;">
+                    <div class="d-flex align-items-center gap-2">
+                        <div style="flex:1;height:4px;background:#e9ecef;border-radius:2px;">
+                            <div style="width:${pct}%;height:100%;background:#0d6efd;border-radius:2px;"></div>
+                        </div>
+                        <span class="text-muted small fw-semibold" style="min-width:34px;text-align:right;">${pct}%</span>
+                    </div>
+                </td>
+                <td class="text-muted small">${_esc(c.description || '—')}</td>
+                <td class="text-end pe-0" style="width:80px;">
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-1 me-1" title="Edit"
+                            onclick="openCriterionEdit(${idx})">
+                        <i class="bi bi-pencil" style="font-size:.75rem;"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete"
+                            onclick="deleteCriterion(${idx})">
+                        <i class="bi bi-trash" style="font-size:.75rem;"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+    _updateWeightStatus();
+}
+
+function _esc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function viewRubric(jobId) {
+    _rubricJobId = jobId;
+    const modalEl  = document.getElementById('rubricViewModal');
+    const modal    = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const contentEl = document.getElementById('rubricViewContent');
+    const footerEl  = document.getElementById('rubricModalFooter');
+
+    contentEl.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary mb-3" role="status"></div><p class="text-muted mb-0">Loading rubric...</p></div>`;
+    footerEl.classList.add('d-none');
     modal.show();
 
     try {
-        const response = await fetch(`/api/rubrics/jobs/${jobId}`);
-        const data = await response.json();
+        const res  = await fetch(`/api/rubrics/jobs/${jobId}`);
+        const data = await res.json();
 
-        if (!data.success) {
-            contentEl.innerHTML = `
-                <div class="alert alert-danger mb-0">
-                    <i class="bi bi-x-circle me-2"></i>
-                    ${data.error || 'Unable to load rubric.'}
-                </div>
-            `;
+        if (!data.success || !data.rubric) {
+            contentEl.innerHTML = `<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>${data.error || 'No rubric found for this job.'}</div>`;
             return;
         }
 
-        if (!data.rubric) {
-            contentEl.innerHTML = `
-                <div class="text-center py-4">
-                    <i class="bi bi-info-circle text-muted" style="font-size: 3rem;"></i>
-                    <p class="text-muted mt-3 mb-0">No rubric is defined for this job yet.</p>
-                </div>
-            `;
-            return;
-        }
-
-        const rubric = data.rubric;
-        const criteria = rubric.criteria || [];
-        const totalWeight = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
-        const totalPct = Math.round(totalWeight * 100);
-        const isComplete = totalPct === 100;
-
-        // Update modal title
-        const titleEl = modalEl.querySelector('.modal-title');
-        if (titleEl) titleEl.textContent = rubric.name || 'Job Rubric';
-
-        const criteriaRows = criteria.length > 0 ? criteria.map((c, idx) => {
-            const pct = Math.round((c.weight || 0) * 100);
-            return `
-            <tr>
-                <td class="ps-0 text-muted small" style="width:32px;">${idx + 1}</td>
-                <td class="fw-semibold" style="width:200px;">${c.name}</td>
-                <td style="width:110px;">
-                    <div class="d-flex align-items-center gap-2">
-                        <div style="flex:1; height:3px; background:#e9ecef; border-radius:2px;">
-                            <div style="width:${pct}%; height:100%; background:#0d6efd; border-radius:2px;"></div>
-                        </div>
-                        <span class="text-muted small fw-semibold" style="min-width:32px; text-align:right;">${pct}%</span>
-                    </div>
-                </td>
-                <td class="text-muted small">${c.description || '—'}</td>
-            </tr>`;
-        }).join('') : `
-            <tr><td colspan="4" class="text-center text-muted py-4 small">No criteria defined.</td></tr>`;
-
-        const scoringItems = [
-            { score: 5, label: 'Exceeds requirements significantly', color: '#198754' },
-            { score: 4, label: 'Exceeds requirements',              color: '#20c997' },
-            { score: 3, label: 'Meets requirements',                color: '#0d6efd' },
-            { score: 2, label: 'Partially meets requirements',      color: '#fd7e14' },
-            { score: 1, label: 'Does not meet requirements',        color: '#dc3545' },
-            { score: 0, label: 'Not applicable / No evidence',      color: '#adb5bd' },
-        ].map(s => `
-            <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
-                <span style="width:28px;height:28px;border-radius:6px;background:${s.color};color:#fff;
-                             display:flex;align-items:center;justify-content:center;
-                             font-weight:700;font-size:.8rem;flex-shrink:0;">${s.score}</span>
-                <span class="small text-secondary">${s.label}</span>
-            </div>`).join('');
-
-        const recommendations = [
-            { range: '80 – 100%', label: 'Strong Yes', action: 'Proceed to Interview', dot: '#198754' },
-            { range: '65 – 79%',  label: 'Yes',        action: 'Proceed to Interview', dot: '#22c55e' },
-            { range: '50 – 64%',  label: 'Maybe',      action: 'Hold for Review',      dot: '#fd7e14' },
-            { range: 'Below 50%', label: 'No',         action: 'Reject',               dot: '#dc3545' },
-        ].map(r => `
-            <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f3f5;">
-                <span class="text-muted small" style="width:72px;flex-shrink:0;">${r.range}</span>
-                <span style="width:8px;height:8px;border-radius:50%;background:${r.dot};flex-shrink:0;"></span>
-                <span class="small"><span class="fw-semibold">${r.label}</span>
-                    <span class="text-muted ms-1">— ${r.action}</span></span>
-            </div>`).join('');
+        _rubric = data.rubric;
+        // Normalise: ensure criteria weights are floats
+        (_rubric.criteria || []).forEach(c => { c.weight = parseFloat(c.weight) || 0; });
 
         contentEl.innerHTML = `
-            <!-- Header -->
-            <div class="mb-4 pb-3" style="border-bottom:1px solid #e9ecef;">
-                ${rubric.description ? `<p class="text-muted small mb-3">${rubric.description}</p>` : ''}
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing:.06em;">Total Weight</span>
-                    <span class="small fw-bold ${isComplete ? 'text-success' : 'text-warning'}">${totalPct}%</span>
-                </div>
-                <div style="height:5px;background:#e9ecef;border-radius:4px;overflow:hidden;">
-                    <div style="width:${Math.min(totalPct,100)}%;height:100%;
-                                background:${isComplete ? '#198754' : '#fd7e14'};
-                                border-radius:4px;transition:width .4s ease;"></div>
-                </div>
-                ${!isComplete ? `<p class="text-warning small mt-1 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>${100 - totalPct}% of weight is unallocated.</p>` : ''}
+            <!-- Rubric name -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Rubric Name</label>
+                <input type="text" class="form-control" id="rubricNameInput"
+                       value="${_esc(_rubric.name || '')}" placeholder="Rubric name">
+            </div>
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Description <span class="text-muted fw-normal">(optional)</span></label>
+                <textarea class="form-control" id="rubricDescInput" rows="2"
+                          placeholder="What this rubric evaluates...">${_esc(_rubric.description || '')}</textarea>
             </div>
 
-            <!-- Criteria table -->
-            <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Evaluation Criteria</p>
-            <div class="table-responsive mb-4">
-                <table class="table align-middle mb-0" style="border-top:none;">
+            <!-- Criteria -->
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <p class="text-muted small text-uppercase fw-semibold mb-0" style="letter-spacing:.06em;">Evaluation Criteria</p>
+                <button class="btn btn-sm btn-outline-primary" onclick="openCriterionEdit(-1)">
+                    <i class="bi bi-plus-lg me-1"></i>Add Criterion
+                </button>
+            </div>
+            <div class="table-responsive mb-3">
+                <table class="table align-middle mb-0">
                     <thead>
                         <tr style="border-bottom:2px solid #e9ecef;">
-                            <th class="ps-0 text-muted fw-normal small pb-2" style="width:32px;">#</th>
+                            <th class="ps-0 text-muted fw-normal small pb-2" style="width:28px;">#</th>
                             <th class="text-muted fw-normal small pb-2">Criterion</th>
-                            <th class="text-muted fw-normal small pb-2" style="width:110px;">Weight</th>
+                            <th class="text-muted fw-normal small pb-2" style="width:120px;">Weight</th>
                             <th class="text-muted fw-normal small pb-2">Description</th>
+                            <th style="width:80px;"></th>
                         </tr>
                     </thead>
-                    <tbody>${criteriaRows}</tbody>
+                    <tbody id="rubricCriteriaBody"></tbody>
                 </table>
             </div>
+        `;
 
-            <!-- Scoring + Recommendations -->
-            <div class="row g-4">
-                <div class="col-md-6">
-                    <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Scoring Scale (0 – 5)</p>
-                    <div>${scoringItems}</div>
-                </div>
-                <div class="col-md-6">
-                    <p class="text-muted small text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Outcome Thresholds</p>
-                    <div>${recommendations}</div>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        contentEl.innerHTML = `
-            <div class="alert alert-danger mb-0">
-                <i class="bi bi-x-circle me-2"></i>
-                Error loading rubric: ${error.message}
-            </div>
-        `;
+        _renderCriteriaTable();
+        footerEl.classList.remove('d-none');
+
+    } catch (err) {
+        contentEl.innerHTML = `<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>Error loading rubric: ${err.message}</div>`;
+    }
+}
+
+// Open the criterion edit sub-modal. idx === -1 means "add new".
+function openCriterionEdit(idx) {
+    const isNew = (idx === -1);
+    document.getElementById('criterionEditTitle').textContent = isNew ? 'Add Criterion' : 'Edit Criterion';
+    document.getElementById('criterionEditIdx').value = idx;
+    document.getElementById('criterionEditError').classList.add('d-none');
+
+    if (isNew) {
+        document.getElementById('criterionEditName').value   = '';
+        document.getElementById('criterionEditWeight').value = '';
+        document.getElementById('criterionEditDesc').value   = '';
+    } else {
+        const c = _rubric.criteria[idx];
+        document.getElementById('criterionEditName').value   = c.name || '';
+        document.getElementById('criterionEditWeight').value = Math.round((parseFloat(c.weight) || 0) * 100);
+        document.getElementById('criterionEditDesc').value   = c.description || '';
+    }
+
+    // Show remaining budget in hint
+    const used = _rubricTotalPct();
+    const currentPct = isNew ? 0 : Math.round((parseFloat(_rubric.criteria[idx].weight) || 0) * 100);
+    const available = 100 - used + currentPct;
+    document.getElementById('criterionWeightHint').textContent = `Available weight: ${available}% (total must not exceed 100%)`;
+
+    // Open sub-modal on top of rubric modal
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('criterionEditModal')).show();
+}
+
+function saveCriterionEdit() {
+    const idx   = parseInt(document.getElementById('criterionEditIdx').value);
+    const isNew = (idx === -1);
+    const errEl = document.getElementById('criterionEditError');
+    errEl.classList.add('d-none');
+
+    const name   = document.getElementById('criterionEditName').value.trim();
+    const pctVal = parseFloat(document.getElementById('criterionEditWeight').value);
+    const desc   = document.getElementById('criterionEditDesc').value.trim();
+
+    if (!name) { errEl.textContent = 'Criterion name is required.'; errEl.classList.remove('d-none'); return; }
+    if (isNaN(pctVal) || pctVal <= 0 || pctVal > 100) { errEl.textContent = 'Weight must be between 1 and 100.'; errEl.classList.remove('d-none'); return; }
+
+    const weight = Math.round(pctVal) / 100;
+    const criteria = _rubric.criteria || [];
+
+    // Check total weight (excluding current row if editing)
+    const otherTotal = criteria.reduce((s, c, i) => s + (i === idx ? 0 : parseFloat(c.weight) || 0), 0);
+    if (Math.round((otherTotal + weight) * 100) > 100) {
+        errEl.textContent = `Adding ${Math.round(pctVal)}% would make the total exceed 100%. Available: ${Math.round((1 - otherTotal) * 100)}%.`;
+        errEl.classList.remove('d-none');
+        return;
+    }
+
+    if (isNew) {
+        // Generate a key from the name
+        const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        criteria.push({ key, name, weight, description: desc });
+    } else {
+        criteria[idx] = { ...criteria[idx], name, weight, description: desc };
+    }
+    _rubric.criteria = criteria;
+
+    bootstrap.Modal.getInstance(document.getElementById('criterionEditModal')).hide();
+    _renderCriteriaTable();
+}
+
+function deleteCriterion(idx) {
+    if (!confirm(`Delete criterion "${_rubric.criteria[idx].name}"?`)) return;
+    _rubric.criteria.splice(idx, 1);
+    _renderCriteriaTable();
+}
+
+async function saveRubric() {
+    const btn = document.getElementById('saveRubricBtn');
+    const pct = _rubricTotalPct();
+    if (pct > 100) { alert(`Total weight is ${pct}%. Reduce before saving.`); return; }
+
+    const name = document.getElementById('rubricNameInput')?.value.trim() || _rubric.name || 'Untitled Rubric';
+    const description = document.getElementById('rubricDescInput')?.value.trim() || '';
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
+    try {
+        const res = await fetch(`/api/rubrics/${_rubric._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description, criteria: _rubric.criteria }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Save failed');
+
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Saved!';
+        btn.classList.replace('btn-primary', 'btn-success');
+        setTimeout(() => {
+            bootstrap.Modal.getInstance(document.getElementById('rubricViewModal')).hide();
+            location.reload();
+        }, 900);
+    } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Save Changes';
+        alert('Error saving rubric: ' + err.message);
     }
 }
 
