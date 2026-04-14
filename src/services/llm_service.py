@@ -96,29 +96,41 @@ class LLMService:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        try:
-            response = requests.post(
-                f"{self.ollama_url}/api/chat",
-                json={
-                    "model": self.model_name,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens,
-                        "num_ctx": 2048,  # Shrink context window — biggest speed lever for llama3
+        last_error = None
+        for attempt in range(2):  # 1 retry
+            try:
+                response = requests.post(
+                    f"{self.ollama_url}/api/chat",
+                    json={
+                        "model": self.model_name,
+                        "messages": messages,
+                        "stream": False,
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": max_tokens,
+                            "num_ctx": 1024,
+                            "num_thread": 4,
+                        },
                     },
-                },
-                timeout=300,
-            )
-            response.raise_for_status()
+                    timeout=300,
+                )
 
-            data = response.json()
-            return data.get("message", {}).get("content", "")
+                if not response.ok:
+                    try:
+                        body = response.json()
+                    except Exception:
+                        body = response.text[:300]
+                    logger.error(f"Ollama {response.status_code} (attempt {attempt+1}): {body}")
+                    response.raise_for_status()
 
-        except Exception as e:
-            logger.error(f"Ollama generation failed: {e}")
-            raise
+                data = response.json()
+                return data.get("message", {}).get("content", "")
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"Ollama generation failed (attempt {attempt+1}): {e}")
+
+        raise last_error
 
     def evaluate_candidate(
         self,

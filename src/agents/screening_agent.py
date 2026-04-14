@@ -13,6 +13,7 @@ from src.models.schemas import (
     Student,
 )
 from src.services.embedding_service import EmbeddingService
+from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,12 @@ class ScreeningInput:
         candidates: list[Student],
         job: JobListing,
         resumes: dict[str, Resume],  # student_id -> Resume
+        rubric: dict = None,
     ):
         self.candidates = candidates
         self.job = job
         self.resumes = resumes
+        self.rubric = rubric
 
 
 class ScreeningOutput:
@@ -98,6 +101,7 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
                     candidate=candidate,
                     job=input_data.job,
                     resume=resume,
+                    rubric=input_data.rubric,
                 )
 
                 scores.append(score)
@@ -130,27 +134,104 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
         candidate: Student,
         job: JobListing,
         resume: Optional[Resume],
+        rubric: Optional[dict] = None,
     ) -> ScreeningScore:
-        """Screen a single candidate.
-
-        Args:
-            candidate: Candidate to screen
-            job: Job listing
-            resume: Candidate's resume (if available)
-
-        Returns:
-            ScreeningScore for the candidate
-        """
-        component_scores = []
-
-        # Get resume text and parsed data
         resume_text = ""
         parsed_resume = ParsedResume()
         if resume:
             resume_text = resume.raw_text
             parsed_resume = resume.parsed_data
 
-        # 1. Skills Match Score
+        # Use rubric criteria + LLM scoring
+        if rubric and rubric.get("criteria"):
+            return await self._screen_with_rubric(
+                candidate, job, resume_text, parsed_resume, rubric
+            )
+
+        # Fallback: rule-based scoring with default weights
+        return await self._screen_with_defaults(
+            candidate, job, resume_text, parsed_resume
+        )
+
+    async def _screen_with_rubric(
+        self,
+        candidate: Student,
+        job: JobListing,
+        resume_text: str,
+        parsed_resume: ParsedResume,
+        rubric: dict,
+    ) -> ScreeningScore:
+        """Score candidate using the generated rubric via LLM."""
+
+        # Build candidate text
+        candidate_text = resume_text or ""
+        if parsed_resume.skills:
+            candidate_text += "\nSkills: " + ", ".join(parsed_resume.skills)
+        if not candidate_text.strip():
+            candidate_text = f"{candidate.first_name} {candidate.last_name} — no resume text available"
+
+        # Map rubric criteria to LLM service format (needs "key" field)
+        criteria = [
+            {
+                "key":         c.get("id", f"C{i}"),
+                "name":        c.get("name", ""),
+                "weight":      float(c.get("weight", 0)),
+                "description": c.get("description", ""),
+            }
+            for i, c in enumerate(rubric["criteria"])
+        ]
+
+        job_requirements = {
+            "qualifications":  job.requirements or [],
+            "responsibilities": [job.description] if job.description else [],
+        }
+
+        # Call LLM — runs synchronously, offload to thread
+        import asyncio
+        llm = LLMService.get_instance()
+        loop = asyncio.get_event_loop()
+        llm_result = await loop.run_in_executor(
+            None,
+            lambda: llm.evaluate_candidate(candidate_text, job_requirements, criteria)
+        )
+
+        # Map LLM scores (0–5) to ComponentScore (0–1)
+        scores_by_key = {s["criterion"]: s for s in llm_result.get("scores", [])}
+        component_scores = []
+        for c in criteria:
+            raw = scores_by_key.get(c["key"], {})
+            score_0_to_1 = round(float(raw.get("score", 0)) / 5.0, 4)
+            component_scores.append(ComponentScore(
+                name=c["key"],
+                score=score_0_to_1,
+                weight=c["weight"],
+                weighted_score=round(score_0_to_1 * c["weight"], 4),
+                details=raw.get("evidence", ""),
+            ))
+
+        overall_score = min(1.0, sum(cs.weighted_score for cs in component_scores))
+
+        return ScreeningScore(
+            candidate_id=candidate.id,
+            job_id=job.id,
+            overall_score=overall_score,
+            component_scores=component_scores,
+            matching_skills=[],
+            missing_skills=[],
+            experience_match=0.0,
+            education_match=0.0,
+        )
+
+    async def _screen_with_defaults(
+        self,
+        candidate: Student,
+        job: JobListing,
+        resume_text: str,
+        parsed_resume: ParsedResume,
+    ) -> ScreeningScore:
+        """Fallback: rule-based scoring with default weights from settings."""
+        component_scores = []
+
         skills_score, matching_skills, missing_skills = self._compute_skills_match(
             candidate_skills=candidate.skills + parsed_resume.skills,
             required_skills=job.required_skills,
@@ -163,11 +244,7 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             details=f"Matched {len(matching_skills)}/{len(job.required_skills)} skills",
         ))
 
-        # 2. Experience Score
-        experience_score = self._compute_experience_match(
-            parsed_resume=parsed_resume,
-            job=job,
-        )
+        experience_score = self._compute_experience_match(parsed_resume=parsed_resume, job=job)
         component_scores.append(ComponentScore(
             name="experience",
             score=experience_score,
@@ -176,12 +253,7 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             details=f"{parsed_resume.total_experience_years:.1f} years experience",
         ))
 
-        # 3. Education Score
-        education_score = self._compute_education_match(
-            candidate=candidate,
-            parsed_resume=parsed_resume,
-            job=job,
-        )
+        education_score = self._compute_education_match(candidate=candidate, parsed_resume=parsed_resume, job=job)
         component_scores.append(ComponentScore(
             name="education",
             score=education_score,
@@ -189,11 +261,7 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             weighted_score=education_score * self.settings.weight_education,
         ))
 
-        # 4. Projects Relevance Score
-        projects_score = await self._compute_projects_relevance(
-            parsed_resume=parsed_resume,
-            job=job,
-        )
+        projects_score = await self._compute_projects_relevance(parsed_resume=parsed_resume, job=job)
         component_scores.append(ComponentScore(
             name="projects",
             score=projects_score,
@@ -201,11 +269,7 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             weighted_score=projects_score * self.settings.weight_projects,
         ))
 
-        # 5. Certifications Score
-        certifications_score = self._compute_certifications_score(
-            parsed_resume=parsed_resume,
-            job=job,
-        )
+        certifications_score = self._compute_certifications_score(parsed_resume=parsed_resume, job=job)
         component_scores.append(ComponentScore(
             name="certifications",
             score=certifications_score,
@@ -213,11 +277,7 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             weighted_score=certifications_score * self.settings.weight_certifications,
         ))
 
-        # 6. Semantic Relevance (Resume to Job Description)
-        relevance_score = await self._compute_semantic_relevance(
-            resume_text=resume_text,
-            job_description=job.description,
-        )
+        relevance_score = await self._compute_semantic_relevance(resume_text=resume_text, job_description=job.description)
         component_scores.append(ComponentScore(
             name="semantic_relevance",
             score=relevance_score,
@@ -225,13 +285,12 @@ class ScreeningAgent(BaseAgent[ScreeningInput, ScreeningOutput]):
             weighted_score=relevance_score * self.settings.weight_soft_skills,
         ))
 
-        # Calculate overall score
         overall_score = sum(cs.weighted_score for cs in component_scores)
 
         return ScreeningScore(
             candidate_id=candidate.id,
             job_id=job.id,
-            overall_score=min(1.0, overall_score),  # Cap at 1.0
+            overall_score=min(1.0, overall_score),
             component_scores=component_scores,
             matching_skills=matching_skills,
             missing_skills=missing_skills,

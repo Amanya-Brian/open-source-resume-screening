@@ -17,6 +17,12 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
+def _name_from_responsibility(r: str) -> str:
+    """Turn a responsibility sentence into a short criterion name."""
+    words = r.rstrip(".,;:").split()
+    return " ".join(words[:5]) if len(words) > 5 else r
+
+
 def _normalize_weights(criteria: list) -> list:
     """Ensure weights sum to exactly 1.0."""
     total = sum(float(c.get("weight", 0)) for c in criteria)
@@ -51,47 +57,56 @@ def rubric_builder_agent(
 
     llm = LLMService.get_instance()
 
-    response = llm.generate(
-        prompt=(
-            f"{context_hint}\n\n"
-            f"Responsibilities:\n{responsibilities_text}\n\n"
-            "Build one criterion per responsibility. "
-            f"Distribute weights (each ~{equal_weight}, total must be 1.0). "
-            "Return ONLY valid JSON, no markdown:\n"
-            '{"title":"Rubric for [role]","version":1,"total_weight":1.0,'
-            '"criteria":[{"id":"C1","name":"...","description":"...","linked_responsibility":"...","weight":0.20}]}'
-        ),
-        system_prompt=(
-            "You are a rubric builder. "
-            "Return ONLY valid JSON with no explanation or markdown. "
-            "One criterion per responsibility. Weights must sum to 1.0."
-        ),
-        max_tokens=800,
-        temperature=0.1
+    # Build a short names list so the LLM only needs to assign weights + short descriptions
+    names_text = "\n".join(
+        f"C{i+1}: {_name_from_responsibility(r)}"
+        for i, r in enumerate(key_responsibilities)
     )
 
     try:
-        rubric = json.loads(_strip_fences(response))
-    except json.JSONDecodeError:
-        logger.warning("rubric_builder_agent: failed to parse JSON — using fallback")
-        rubric = {
-            "title": "Draft Rubric",
-            "version": 1,
-            "total_weight": 1.0,
-            "criteria": [
-                {
-                    "id": f"C{i+1}",
-                    "name": f"Criterion {i+1}",
-                    "description": r,
-                    "linked_responsibility": r,
-                    "weight": equal_weight
-                }
-                for i, r in enumerate(key_responsibilities)
-            ]
-        }
+        response = llm.generate(
+            prompt=(
+                f"Assign weights to these {n} criteria so they sum to 1.0. "
+                f"Vary weights based on importance{(' for ' + document_context['seniority']) if document_context.get('seniority') else ''}.\n"
+                f"{names_text}\n"
+                "Return ONLY JSON: "
+                '{"criteria":[{"id":"C1","weight":0.25},{"id":"C2","weight":0.20}]}'
+            ),
+            system_prompt="Return ONLY valid JSON. No explanation.",
+            max_tokens=200,
+            temperature=0.1
+        )
+        llm_data = json.loads(_strip_fences(response))
+        # LLM returns just weights; build the full criteria list ourselves
+        weights_by_id = {c["id"]: float(c.get("weight", equal_weight)) for c in llm_data.get("criteria", [])}
+        criteria = [
+            {
+                "id": f"C{i+1}",
+                "name": _name_from_responsibility(r),
+                "description": r,
+                "linked_responsibility": r,
+                "weight": weights_by_id.get(f"C{i+1}", equal_weight),
+            }
+            for i, r in enumerate(key_responsibilities)
+        ]
+    except Exception:
+        logger.warning("rubric_builder_agent: LLM failed — using fallback")
+        criteria = [
+            {
+                "id": f"C{i+1}",
+                "name": _name_from_responsibility(r),
+                "description": r,
+                "linked_responsibility": r,
+                "weight": equal_weight,
+            }
+            for i, r in enumerate(key_responsibilities)
+        ]
 
-    criteria = rubric.get("criteria", [])
-    rubric["criteria"] = _normalize_weights(criteria)
-    rubric["total_weight"] = round(sum(c["weight"] for c in rubric["criteria"]), 4)
-
+    criteria = _normalize_weights(criteria)
+    rubric = {
+        "title": f"Rubric for {document_context.get('seniority', 'Role')}",
+        "version": 1,
+        "criteria": criteria,
+        "total_weight": round(sum(c["weight"] for c in criteria), 4),
+    }
     return rubric

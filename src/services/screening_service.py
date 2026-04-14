@@ -74,6 +74,27 @@ class ScreeningService:
         if not job:
             raise ValueError(f"Job not found: {job_id}")
 
+        # Load rubric for this job (if generated)
+        rubric = None
+        rubric_id = job.get("rubric_id")
+        if rubric_id:
+            try:
+                from bson import ObjectId
+                rubric = await self.mongo.find_one("rubrics", {"_id": ObjectId(rubric_id)})
+                if rubric and rubric.get("criteria"):
+                    logger.info(f"Using generated rubric with {len(rubric['criteria'])} criteria for job {job_id}")
+                else:
+                    rubric = None
+            except Exception as e:
+                logger.warning(f"Could not load rubric {rubric_id}: {e}")
+                rubric = None
+
+        if not rubric:
+            raise ValueError(
+                "No rubric found for this job. "
+                "Please generate a rubric before running screening."
+            )
+
         # Fetch ALL applications in one query
         applications = await self.mongo.find_many(
             "applications",
@@ -132,7 +153,7 @@ class ScreeningService:
                     except Exception:
                         pass
                 resume = resume_map.get(app.get("student_id"))
-                return await self._evaluate_candidate(application=app, job=job, resume=resume)
+                return await self._evaluate_candidate(application=app, job=job, resume=resume, rubric=rubric)
 
         evaluations = list(await asyncio.gather(*[_evaluate_one(i, app) for i, app in enumerate(applications)]))
 
@@ -180,6 +201,7 @@ class ScreeningService:
         application: dict[str, Any],
         job: dict[str, Any],
         resume: Optional[dict[str, Any]],
+        rubric: Optional[dict] = None,
     ) -> CandidateEvaluation:
         """Evaluate a single candidate.
 
@@ -212,12 +234,17 @@ class ScreeningService:
             job_title=job_title,
         )
 
+        # Build rubric criteria list for this evaluation
+        rubric_criteria = None
+        if rubric and rubric.get("criteria"):
+            rubric_criteria = rubric["criteria"]
+
         # Try LLM-based evaluation if enabled and candidate has enough text to evaluate
         llm_succeeded = False
         if self.use_llm and len(full_text) >= 100:
             try:
                 criteria_scores, strengths, concerns = await self._evaluate_with_llm(
-                    full_text, qualifications, responsibilities
+                    full_text, qualifications, responsibilities, rubric_criteria=rubric_criteria
                 )
                 # Check if LLM actually scored (not all zeros from failed matching)
                 if criteria_scores and any(cs.raw_score > 0 for cs in criteria_scores):
@@ -246,29 +273,24 @@ class ScreeningService:
         if not llm_succeeded:
             criteria_scores = []
 
-            # 1. Education & Qualifications
-            edu_score = self._score_education(full_text, qualifications)
-            criteria_scores.append(edu_score)
-
-            # 2. Relevant Experience
-            exp_score = self._score_experience(full_text, qualifications)
-            criteria_scores.append(exp_score)
-
-            # 3. Technical Skills
-            tech_score = self._score_technical_skills(full_text, qualifications)
-            criteria_scores.append(tech_score)
-
-            # 4. Industry Knowledge
-            industry_score = self._score_industry_knowledge(full_text, job_title, responsibilities)
-            criteria_scores.append(industry_score)
-
-            # 5. Leadership Experience
-            leadership_score = self._score_leadership(full_text)
-            criteria_scores.append(leadership_score)
-
-            # 6. Communication Skills
-            comm_score = self._score_communication(cover_letter)
-            criteria_scores.append(comm_score)
+            if rubric_criteria:
+                # Use rubric criteria with a neutral score (3/5) as fallback
+                for c in rubric_criteria:
+                    criteria_scores.append(CriterionScore(
+                        criterion_key=c.get("id", ""),
+                        criterion_name=c.get("name", ""),
+                        weight=float(c.get("weight", 0)),
+                        raw_score=3,
+                        evidence="Rule-based fallback (LLM unavailable)",
+                    ))
+            else:
+                # Last resort: default fixed criteria
+                criteria_scores.append(self._score_education(full_text, qualifications))
+                criteria_scores.append(self._score_experience(full_text, qualifications))
+                criteria_scores.append(self._score_technical_skills(full_text, qualifications))
+                criteria_scores.append(self._score_industry_knowledge(full_text, job_title, responsibilities))
+                criteria_scores.append(self._score_leadership(full_text))
+                criteria_scores.append(self._score_communication(cover_letter))
 
             evaluation.criteria_scores = criteria_scores
             evaluation.calculate_totals()
@@ -291,104 +313,69 @@ class ScreeningService:
         candidate_text: str,
         qualifications: list[str],
         responsibilities: list[str],
+        rubric_criteria: Optional[list] = None,
     ) -> tuple[list[CriterionScore], list[str], list[str]]:
-        """Evaluate candidate using LLM.
-
-        Args:
-            candidate_text: Combined resume and cover letter
-            qualifications: Job qualifications
-            responsibilities: Job responsibilities
-
-        Returns:
-            Tuple of (criteria_scores, strengths, concerns)
-        """
+        """Evaluate candidate using LLM with rubric criteria."""
         llm = get_llm_service()
 
-        # Initialize LLM if not done
         if not self._llm_initialized:
             logger.info("Initializing LLM for screening...")
             llm.initialize()
             self._llm_initialized = True
 
-        # Prepare criteria for LLM
-        criteria = [
-            {"key": c.key, "name": c.name, "weight": c.weight, "description": c.description}
-            for c in DefaultCriteria.get_all()
-        ]
+        # Build criteria list from rubric or fall back to defaults
+        if rubric_criteria:
+            criteria = [
+                {
+                    "key":         c.get("id", f"C{i}"),
+                    "name":        c.get("name", ""),
+                    "weight":      float(c.get("weight", 0)),
+                    "description": c.get("description", ""),
+                }
+                for i, c in enumerate(rubric_criteria)
+            ]
+        else:
+            criteria = [
+                {"key": c.key, "name": c.name, "weight": c.weight, "description": c.description}
+                for c in DefaultCriteria.get_all()
+            ]
 
-        # Get LLM evaluation
         job_requirements = {
             "qualifications": qualifications,
             "responsibilities": responsibilities,
         }
 
-        # Run the blocking requests.post call in a thread so the event loop stays free
         result = await asyncio.to_thread(llm.evaluate_candidate, candidate_text, job_requirements, criteria)
 
-        # Parse LLM response into CriterionScore objects
-        criteria_scores = []
         llm_scores = result.get("scores", [])
-        matched_count = 0
 
-        # Pre-normalize all LLM score criterion names for matching
-        normalized_llm = {}
-        for s in llm_scores:
-            raw_name = s.get("criterion", "")
-            norm_key = raw_name.lower().strip().replace(" ", "_").replace("-", "_").replace("&", "and")
-            normalized_llm[norm_key] = s
-            # Also store by raw name for exact match
-            normalized_llm[raw_name.lower().strip()] = s
+        # Index LLM scores by criterion key for matching
+        scores_by_key = {s.get("criterion", ""): s for s in llm_scores}
+        # Also index by position for fallback
+        scores_by_pos = {i: s for i, s in enumerate(llm_scores)}
 
-        for criterion in DefaultCriteria.get_all():
-            # Try multiple matching strategies
-            llm_score = None
-            norm_crit = criterion.key.lower()
-
-            # Strategy 1: Exact key match
-            llm_score = normalized_llm.get(norm_crit)
-
-            # Strategy 2: Normalized name match
-            if not llm_score:
-                norm_name = criterion.name.lower().replace(" ", "_").replace("&", "and")
-                llm_score = normalized_llm.get(norm_name)
-
-            # Strategy 3: Partial key match (e.g., "technical" matches "technical_skills")
-            if not llm_score:
-                for llm_key, s in normalized_llm.items():
-                    if norm_crit in llm_key or llm_key in norm_crit:
-                        llm_score = s
-                        break
-
-            # Strategy 4: Match by position in the list (if same count)
-            if not llm_score and len(llm_scores) == len(DefaultCriteria.get_all()):
-                idx = list(DefaultCriteria.get_all()).index(criterion)
-                if idx < len(llm_scores):
-                    llm_score = llm_scores[idx]
-                    logger.debug(f"Matched {criterion.key} by position [{idx}]")
-
+        criteria_scores = []
+        for i, c in enumerate(criteria):
+            key = c["key"]
+            llm_score = scores_by_key.get(key) or scores_by_pos.get(i)
             if llm_score:
                 score = min(5, max(0, int(float(llm_score.get("score", 0)))))
                 evidence = llm_score.get("evidence", "LLM evaluation")
-                matched_count += 1
             else:
                 score = 0
-                evidence = "Not evaluated - criterion not matched in LLM response"
-                logger.warning(f"No LLM score for '{criterion.key}'. Available: {list(normalized_llm.keys())}")
+                evidence = "Not evaluated"
+                logger.warning(f"No LLM score for criterion '{key}'")
 
             criteria_scores.append(CriterionScore(
-                criterion_key=criterion.key,
-                criterion_name=criterion.name,
-                weight=criterion.weight,
+                criterion_key=key,
+                criterion_name=c["name"],
+                weight=c["weight"],
                 raw_score=score,
                 evidence=evidence,
             ))
 
-        logger.info(f"LLM criterion matching: {matched_count}/{len(DefaultCriteria.get_all())} matched")
-
-        strengths = result.get("strengths", [])
-        concerns = result.get("concerns", [])
-
-        return criteria_scores, strengths, concerns
+        logger.info(f"LLM scored {len([s for s in criteria_scores if s.raw_score > 0])}/{len(criteria)} criteria")
+        return criteria_scores, result.get("strengths", []), result.get("concerns", [])
 
     async def _generate_llm_explanation(
         self,
