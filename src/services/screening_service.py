@@ -230,8 +230,9 @@ class ScreeningService:
         # Get text content for analysis
         cover_letter = application.get("cover_letter", "")
 
-        # Prefer the PDF attached to this specific application (same source as Preview Resume).
-        # Fall back to the cached raw_text in the resumes collection only if extraction fails.
+        # Screening is CV-only — cover letter is excluded to prevent unverified claims
+        # from inflating scores. Use the PDF attached to this application (same source
+        # as Preview Resume). Fall back to cached raw_text only if the download fails.
         document_url = application.get("document_url") or (resume.get("file_url") if resume else None)
         resume_text = await self._extract_text_from_url(document_url) if document_url else ""
         if not resume_text:
@@ -239,7 +240,7 @@ class ScreeningService:
             if resume_text:
                 logger.debug(f"Using cached raw_text for {candidate_name} (PDF fetch failed or no URL)")
 
-        full_text = f"{cover_letter}\n{resume_text}".strip()
+        full_text = resume_text.strip()
 
         # Job requirements
         qualifications = job.get("qualifications", [])
