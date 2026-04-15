@@ -146,27 +146,47 @@ class LLMService:
         criteria_keys = [c["key"] for c in criteria]
         criteria_keys_str = ", ".join([f'"{k}"' for k in criteria_keys])
 
-        system_prompt = f"""You are an expert HR recruiter evaluating job candidates.
-Score each criterion on a 0-5 scale:
-  5 = Exceeds significantly (exceptional match, strong evidence)
-  4 = Exceeds (above requirements, clear evidence)
-  3 = Meets requirements (solid match)
-  2 = Partially meets (some evidence but gaps)
-  1 = Does not meet (weak or no relevant evidence)
-  0 = Not applicable
+        system_prompt = f"""You are a hiring manager responsible for shortlisting candidates. You are strict and systematic.
 
-IMPORTANT:
-- Keep evidence BRIEF (max 20 words per criterion)
-- Give VARIED scores - do NOT score everything the same
-- Use these exact criterion keys: [{criteria_keys_str}]
+EVALUATION ORDER — always assess in this order:
+  1. EXPERIENCE first — does the candidate have directly relevant work experience for this role?
+  2. EDUCATION second — do their qualifications match what the role requires?
+  3. All other criteria after these two.
 
-Respond with ONLY valid JSON in this format:
-{{"scores": [{{"criterion": "{criteria_keys[0]}", "score": 3, "evidence": "Brief evidence"}}, {{"criterion": "{criteria_keys[1]}", "score": 4, "evidence": "Brief evidence"}}], "strengths": ["Brief strength"], "concerns": ["Brief concern"]}}"""
+SCORING RULES (0-5 scale, be strict):
+  5 = Outstanding match — clear, specific evidence of exceeding requirements
+  4 = Strong match — solid evidence of meeting and going beyond
+  3 = Adequate match — meets the core requirements, no significant gaps
+  2 = Weak match — some relevance but meaningful gaps
+  1 = Poor match — little to no relevant evidence
+  0 = No match / Not applicable — irrelevant or entirely absent
 
-        # Format criteria for prompt
+STRICT SHORTLISTING RULES:
+- If a candidate has NO relevant experience for this specific role, score experience 0-1. Do NOT inflate.
+- If qualifications are completely mismatched, score education 0-1.
+- A candidate with score 0-1 on both experience AND education should score 0-2 on all other criteria.
+- NEVER give a 3 or higher without specific evidence from the application text.
+- Scores must be VARIED — do not rate all criteria the same.
+
+Use these exact criterion keys: [{criteria_keys_str}]
+
+Respond with ONLY valid JSON:
+{{"scores": [{{"criterion": "{criteria_keys[0]}", "score": 1, "evidence": "Brief evidence"}}, {{"criterion": "{criteria_keys[1]}", "score": 3, "evidence": "Brief evidence"}}], "strengths": ["Specific strength"], "concerns": ["Specific gap"]}}"""
+
+        # Format criteria for prompt — experience and education-related criteria listed first
+        def _criterion_sort_key(c):
+            name_lower = c.get('name', '').lower()
+            key_lower = c.get('key', '').lower()
+            if 'experience' in name_lower or 'experience' in key_lower:
+                return 0
+            if 'education' in name_lower or 'education' in key_lower or 'qualification' in name_lower:
+                return 1
+            return 2
+
+        sorted_criteria = sorted(criteria, key=_criterion_sort_key)
         criteria_text = "\n".join([
             f"- {c['key']} ({c['name']}, {int(c['weight']*100)}% weight): {c.get('description', 'Evaluate based on evidence')}"
-            for c in criteria
+            for c in sorted_criteria
         ])
 
         # Format job requirements
@@ -183,19 +203,25 @@ Respond with ONLY valid JSON in this format:
         if len(candidate_text) > max_candidate_len:
             candidate_text = candidate_text[:max_candidate_len] + "..."
 
-        prompt = f"""Evaluate this candidate for the job.
+        prompt = f"""You are shortlisting candidates. Evaluate strictly — only advance candidates with clear, relevant evidence.
 
 {job_text}
 
-EVALUATION CRITERIA (score EACH one 0-5 with specific evidence):
+EVALUATION CRITERIA — assess EXPERIENCE first, then EDUCATION, then others:
 {criteria_text}
 
-CANDIDATE'S APPLICATION TEXT:
+CANDIDATE'S APPLICATION:
 ---
 {candidate_text}
 ---
 
-Score each criterion. Be specific about what you found or didn't find.
+INSTRUCTIONS:
+- Check for relevant work experience first. If absent or unrelated, score experience 0-1.
+- Check for matching qualifications next. If unrelated, score education 0-1.
+- If the candidate is clearly unsuitable, all scores should be low (0-2).
+- Base every score strictly on what is written above — do not assume or infer what is not stated.
+- Provide a brief evidence note (max 15 words) for each criterion.
+
 Respond with ONLY the JSON:"""
 
         try:
@@ -250,14 +276,16 @@ Respond with ONLY the JSON:"""
         Returns:
             Dictionary with summary, strengths, and concerns
         """
-        system_prompt = """You are an HR professional writing candidate evaluation summaries.
-Write clear, professional, and constructive feedback that helps hiring managers make decisions.
+        system_prompt = """You are a hiring manager writing shortlisting notes after reviewing a candidate.
+Be direct and honest — your notes will inform the final hiring decision.
 
-IMPORTANT:
-- "summary" should be 2-3 sentences explaining WHY this candidate is/isn't a good fit
-- "strengths" should be 2-4 SPECIFIC strengths with evidence (not generic)
-- "concerns" should be 1-3 SPECIFIC gaps or risks with what's missing
-- "interview_questions" should be 1-2 questions to probe the concerns
+RULES:
+- "summary" — 2-3 sentences: state clearly whether this candidate should be shortlisted and why, based on their experience and qualifications
+- "strengths" — 2-4 SPECIFIC points backed by evidence from the application (not generic praise)
+- "concerns" — list ALL significant gaps; if the candidate is not suitable, say so plainly
+- "interview_questions" — 1-2 targeted questions to probe the biggest gaps or verify claimed experience
+
+If the overall score is below 50%, the summary must state the candidate is not recommended for shortlisting.
 
 Respond with ONLY valid JSON:
 {"summary": "...", "strengths": ["..."], "concerns": ["..."], "interview_questions": ["..."]}"""
