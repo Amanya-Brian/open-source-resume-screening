@@ -156,56 +156,96 @@ class LLMService:
         criteria_keys = [c["key"] for c in criteria]
         criteria_keys_str = ", ".join([f'"{k}"' for k in criteria_keys])
 
-        system_prompt = f"""You are an expert HR recruiter evaluating job candidates.
-Score each criterion on a 0-5 scale:
-  5 = Exceeds significantly (exceptional match, strong evidence)
-  4 = Exceeds (above requirements, clear evidence)
-  3 = Meets requirements (solid match)
-  2 = Partially meets (some evidence but gaps)
-  1 = Does not meet (weak or no relevant evidence)
-  0 = Not applicable
+        system_prompt = f"""You are a hiring manager shortlisting candidates using their CV/resume only.
+No cover letter is available — base every judgement on documented CV content only.
 
-IMPORTANT:
-- Keep evidence BRIEF (max 20 words per criterion)
-- Give VARIED scores - do NOT score everything the same
-- Use these exact criterion keys: [{criteria_keys_str}]
+FIELD CORRELATION CHECK (do this first):
+Before scoring anything, determine whether the candidate's CV shows ANY correlation with the job's field/domain.
+Correlation means: relevant job titles, employers in the same industry, related academic qualifications, or relevant certifications.
+  - Example of correlation for a medical role: worked in a hospital/clinic/pharmacy, studied medicine/nursing/health sciences, certified in any health-related area.
+  - Example of NO correlation: only IT, agriculture, finance, or unrelated trade work with no health touchpoint.
+If there is NO correlation at all → all scores MUST be 0-1. Stop there.
+If any correlation exists → evaluate fully and objectively.
 
-Respond with ONLY valid JSON in this format:
-{{"scores": [{{"criterion": "{criteria_keys[0]}", "score": 3, "evidence": "Brief evidence"}}, {{"criterion": "{criteria_keys[1]}", "score": 4, "evidence": "Brief evidence"}}], "strengths": ["Brief strength"], "concerns": ["Brief concern"]}}"""
+EVALUATION ORDER (for correlated candidates):
+  1. WORK EXPERIENCE — match against job responsibilities and rubric criteria. Score what is documented.
+  2. EDUCATION & QUALIFICATIONS — match against required qualifications and rubric criteria.
+  3. Remaining rubric criteria — score based on CV evidence only.
 
-        # Format criteria for prompt
+SCORING (0-5):
+  5 = Exceptional — CV evidence clearly exceeds what the role requires
+  4 = Strong — CV clearly meets and goes beyond requirements
+  3 = Adequate — CV meets the core requirement
+  2 = Partial — some relevant evidence but notable gaps
+  1 = Weak — little to no relevant CV evidence
+  0 = None — absent from CV or completely irrelevant field
+
+STRICT RULES:
+- Never infer, assume, or give benefit of the doubt. Score only documented facts.
+- Scores must differ across criteria — do NOT give the same score to everything.
+- An uncorrelated candidate scores 0-1 on ALL criteria, no exceptions.
+- Keep evidence notes factual (max 12 words, quote or reference the CV directly).
+
+Criterion keys to use: [{criteria_keys_str}]
+
+Respond with ONLY valid JSON:
+{{"scores": [{{"criterion": "{criteria_keys[0]}", "score": 0, "evidence": "No relevant field experience in CV"}}, {{"criterion": "{criteria_keys[1]}", "score": 2, "evidence": "Brief CV evidence"}}], "strengths": ["CV-backed strength or empty if none"], "concerns": ["Specific gap"]}}"""
+
+        # Sort criteria: experience first, education second, rest after
+        def _criterion_sort_key(c):
+            name_lower = c.get('name', '').lower()
+            key_lower  = c.get('key', '').lower()
+            if 'experience' in name_lower or 'experience' in key_lower:
+                return 0
+            if 'education' in name_lower or 'education' in key_lower or 'qualification' in name_lower:
+                return 1
+            return 2
+
+        sorted_criteria = sorted(criteria, key=_criterion_sort_key)
         criteria_text = "\n".join([
-            f"- {c['key']} ({c['name']}, {int(c['weight']*100)}% weight): {c.get('description', 'Evaluate based on evidence')}"
-            for c in criteria
+            f"- {c['key']} ({c['name']}, {int(c['weight']*100)}% weight): {c.get('description', 'Evaluate based on CV evidence')}"
+            for c in sorted_criteria
         ])
 
-        # Format job requirements
+        # Build full job context: ALL qualifications and responsibilities so the LLM
+        # has complete domain context for the field correlation check.
         quals = job_requirements.get("qualifications", [])
         resps = job_requirements.get("responsibilities", [])
         job_text = ""
         if quals:
-            job_text += "REQUIRED QUALIFICATIONS:\n" + "\n".join([f"- {q}" for q in quals[:5]])
+            job_text += "REQUIRED QUALIFICATIONS:\n" + "\n".join([f"- {q}" for q in quals[:10]])
         if resps:
-            job_text += "\n\nKEY RESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:5]])
+            job_text += "\n\nKEY RESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:10]])
 
-        # Trim candidate text — less input = faster prefill; 1500 chars is plenty for scoring
-        max_candidate_len = 1500
+        # Trim CV text — 2000 chars to ensure full experience/education sections are visible
+        max_candidate_len = 2000
         if len(candidate_text) > max_candidate_len:
             candidate_text = candidate_text[:max_candidate_len] + "..."
 
-        prompt = f"""Evaluate this candidate for the job.
+        prompt = f"""Shortlist this candidate using their CV only. No cover letter.
 
+JOB CONTEXT:
 {job_text}
 
-EVALUATION CRITERIA (score EACH one 0-5 with specific evidence):
+RUBRIC CRITERIA (match experience and education against these):
 {criteria_text}
 
-CANDIDATE'S APPLICATION TEXT:
+CANDIDATE CV:
 ---
 {candidate_text}
 ---
 
-Score each criterion. Be specific about what you found or didn't find.
+STEP 1 — FIELD CORRELATION CHECK:
+Read the CV's work experience and education/qualifications sections.
+Ask: Does anything in this CV relate to the job's field or domain (as described in the qualifications, responsibilities, and rubric above)?
+  - YES (any correlation) → proceed to Step 2
+  - NO (completely different field) → assign scores 0-1 for ALL criteria, set concerns to explain the mismatch, and output the JSON.
+
+STEP 2 — SCORING (only if Step 1 = YES):
+Score each criterion by matching CV evidence against the job qualifications, responsibilities, and rubric description.
+Start with work experience, then education, then remaining criteria.
+Base every score strictly on what is written in the CV above.
+
 Respond with ONLY the JSON:"""
 
         try:
@@ -260,14 +300,16 @@ Respond with ONLY the JSON:"""
         Returns:
             Dictionary with summary, strengths, and concerns
         """
-        system_prompt = """You are an HR professional writing candidate evaluation summaries.
-Write clear, professional, and constructive feedback that helps hiring managers make decisions.
+        system_prompt = """You are a hiring manager writing shortlisting notes based on a candidate's CV only.
+Be direct — your notes inform the final hiring decision.
 
-IMPORTANT:
-- "summary" should be 2-3 sentences explaining WHY this candidate is/isn't a good fit
-- "strengths" should be 2-4 SPECIFIC strengths with evidence (not generic)
-- "concerns" should be 1-3 SPECIFIC gaps or risks with what's missing
-- "interview_questions" should be 1-2 questions to probe the concerns
+RULES:
+- "summary" — 2-3 sentences: state clearly whether the candidate's CV justifies shortlisting, referencing their actual work experience and qualifications
+- "strengths" — 2-4 SPECIFIC points from the CV (job titles, qualifications, skills listed) — no generic praise
+- "concerns" — list every significant gap between the CV and role requirements; be plain if the candidate is unsuitable
+- "interview_questions" — 1-2 questions to verify or probe the most critical gaps
+
+If the overall score is below 50%, the summary MUST explicitly state the candidate is not recommended for shortlisting and explain why based on the CV.
 
 Respond with ONLY valid JSON:
 {"summary": "...", "strengths": ["..."], "concerns": ["..."], "interview_questions": ["..."]}"""
