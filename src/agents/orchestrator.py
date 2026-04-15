@@ -180,6 +180,13 @@ class AgentOrchestrator:
             state.mark_step_complete("fetch", fetch_result.data)
             fetch_data: DataFetchingOutput = fetch_result.data
 
+            # Block screening if no rubric has been generated for this job
+            if not fetch_data.rubric:
+                raise Exception(
+                    "No rubric found for this job. "
+                    "Please generate a rubric before running screening."
+                )
+
             # Step 2: Screen candidates
             state.current_step = "screen"
             screen_result = await self._run_screen_step(context, fetch_data)
@@ -244,6 +251,16 @@ class AgentOrchestrator:
                     state.mark_step_complete("explain", explain_result.data)
                     explanation_data = explain_result.data
 
+            # Save results to MongoDB
+            await self._save_results_to_db(
+                job_id=job_id,
+                fetch_data=fetch_data,
+                rank_data=rank_data,
+                explanation_data=explanation_data,
+                fairness_result=fairness_result,
+                validation_result=validation_result,
+            )
+
             # Complete pipeline
             state.status = PipelineStatus.COMPLETED
             state.end_time = time.time()
@@ -307,13 +324,13 @@ class AgentOrchestrator:
         """Run screening step."""
         logger.info(f"Screening {len(fetch_data.students)} candidates")
 
-        # Build resume lookup
         resumes = {r.student_id: r for r in fetch_data.resumes}
 
         screen_input = ScreeningInput(
             candidates=fetch_data.students,
             job=fetch_data.job,
             resumes=resumes,
+            rubric=fetch_data.rubric,
         )
 
         return await self.screening_agent.run(screen_input, context)
@@ -395,6 +412,101 @@ class AgentOrchestrator:
         )
 
         return await self.explanation_agent.run(explain_input, context)
+
+    async def _save_results_to_db(
+        self,
+        job_id: str,
+        fetch_data: "DataFetchingOutput",
+        rank_data: "RankingOutput",
+        explanation_data: Any,
+        fairness_result: Any,
+        validation_result: Any,
+    ) -> None:
+        """Persist screening results, fairness report and session summary to MongoDB."""
+        try:
+            await self.mongo_service.connect()
+
+            # Build candidate name lookup from fetched students
+            name_lookup = {
+                s.id: f"{s.first_name} {s.last_name}".strip() or s.id
+                for s in fetch_data.students
+            }
+
+            # Build explanation lookup (strengths / concerns)
+            explanation_lookup: dict[str, Any] = {}
+            if explanation_data:
+                for exp in explanation_data.explanations:
+                    explanation_lookup[exp.candidate_id] = exp
+
+            # Save one screening_result doc per ranked candidate
+            for rc in rank_data.ranking_result.ranked_candidates:
+                ss = rc.screening_score
+                pct = round(ss.overall_score * 100, 1)
+                exp = explanation_lookup.get(rc.candidate_id)
+
+                doc = {
+                    "_id":                 f"{job_id}-{rc.candidate_id}",
+                    "job_id":              job_id,
+                    "candidate_id":        rc.candidate_id,
+                    "candidate_name":      name_lookup.get(rc.candidate_id, rc.candidate_id),
+                    "job_title":           fetch_data.job.title if fetch_data.job else "",
+                    "rank":                rc.rank,
+                    "total_weighted_score": round(ss.overall_score * 5, 2),
+                    "percentage":          pct,
+                    "recommendation":      rc.recommendation.value,
+                    "criteria_scores": [
+                        {
+                            "criterion_key":  cs.name,
+                            "criterion_name": cs.name,
+                            "weight":         cs.weight,
+                            "raw_score":      round(cs.score * 5, 2),
+                            "weighted_score": cs.weighted_score,
+                            "evidence":       cs.details or "",
+                        }
+                        for cs in ss.component_scores
+                    ],
+                    "strengths": [str(s) for s in exp.strengths] if exp else [],
+                    "concerns":  [str(g) for g in exp.gaps]      if exp else [],
+                    "matching_skills": ss.matching_skills,
+                    "missing_skills":  ss.missing_skills,
+                }
+
+                await self.mongo_service.update_one(
+                    "screening_results",
+                    {"_id": doc["_id"]},
+                    {"$set": doc},
+                    upsert=True,
+                )
+
+            logger.info(f"Saved {len(rank_data.ranking_result.ranked_candidates)} screening results for job {job_id}")
+
+            # Save fairness report
+            if fairness_result and fairness_result.success:
+                fr = fairness_result.data.fairness_report
+                if fr:
+                    m = fr.metrics
+                    fairness_doc = {
+                        "_id":          f"fairness-{job_id}",
+                        "job_id":       job_id,
+                        "is_compliant": fr.is_compliant,
+                        "metrics": {
+                            "disparate_impact_ratio": m.disparate_impact_ratio,
+                            "demographic_parity":     m.demographic_parity,
+                            "equal_opportunity":      m.equal_opportunity,
+                            "attribute_variance":     m.attribute_variance,
+                        },
+                        "violations":      fr.violations if hasattr(fr, "violations") else [],
+                        "recommendations": fr.recommendations if hasattr(fr, "recommendations") else [],
+                    }
+                    await self.mongo_service.update_one(
+                        "fairness_reports",
+                        {"_id": fairness_doc["_id"]},
+                        {"$set": fairness_doc},
+                        upsert=True,
+                    )
+
+        except Exception as e:
+            logger.error(f"_save_results_to_db failed: {e}")
 
     def get_session_status(self, session_id: str) -> Optional[dict[str, Any]]:
         """Get status of a pipeline session.

@@ -40,11 +40,13 @@ class DataFetchingOutput:
         students: Optional[list[Student]] = None,
         applications: Optional[list[Application]] = None,
         resumes: Optional[list[Resume]] = None,
+        rubric: Optional[dict] = None,
     ):
         self.job = job
         self.students = students or []
         self.applications = applications or []
         self.resumes = resumes or []
+        self.rubric = rubric  # Generated rubric for this job, or None
 
     @property
     def candidate_count(self) -> int:
@@ -140,6 +142,14 @@ class DataFetchingAgent(BaseAgent[DataFetchingInput, DataFetchingOutput]):
             if input_data.sync_to_db and self.mongo_service:
                 logger.info("Syncing data to MongoDB")
                 await self._sync_to_db(output)
+
+            # 6. Fetch rubric for this job from MongoDB
+            if self.mongo_service:
+                output.rubric = await self._fetch_rubric(input_data.job_id)
+                if output.rubric:
+                    logger.info(f"Rubric loaded: {len(output.rubric.get('criteria', []))} criteria")
+                else:
+                    logger.info("No rubric found for this job")
 
             return AgentResult.success_result(output, self.name)
 
@@ -306,6 +316,22 @@ class DataFetchingAgent(BaseAgent[DataFetchingInput, DataFetchingOutput]):
 
         except Exception as e:
             logger.warning(f"Failed to parse resume for {student_id}: {e}")
+            return None
+
+    async def _fetch_rubric(self, job_id: str) -> Optional[dict]:
+        """Fetch the generated rubric for this job from MongoDB."""
+        try:
+            await self.mongo_service.connect()
+            job_record = await self.mongo_service.find_one("job_listings", {"_id": job_id})
+            if not job_record or not job_record.get("rubric_id"):
+                return None
+            from bson import ObjectId
+            rubric = await self.mongo_service.find_one(
+                "rubrics", {"_id": ObjectId(job_record["rubric_id"])}
+            )
+            return rubric
+        except Exception as e:
+            logger.warning(f"Could not fetch rubric for job {job_id}: {e}")
             return None
 
     async def _sync_to_db(self, output: DataFetchingOutput) -> None:
