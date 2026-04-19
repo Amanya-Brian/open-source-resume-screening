@@ -29,6 +29,9 @@ pypdf
 PyPDF2
 pdfplumber
 python-docx
+pytesseract
+pdf2image
+Pillow
 
 # NLP Tools
 spacy

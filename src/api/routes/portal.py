@@ -221,12 +221,12 @@ def job_detail(job_id: str):
                 if rubric_doc:
                     rubric_doc["_id"] = str(rubric_doc["_id"])
                     rubric_data = {
-                        "name": rubric_doc.get("name", ""),
+                        "name": rubric_doc.get("name", rubric_doc.get("title", "")),
                         "description": rubric_doc.get("description", ""),
                         "criteria": [
                             {
                                 "name": c.get("name", ""),
-                                "key": c.get("key", ""),
+                                "key": c.get("id", c.get("key", "")),
                                 "weight": c.get("weight", 0),
                                 "description": c.get("description", ""),
                             }
