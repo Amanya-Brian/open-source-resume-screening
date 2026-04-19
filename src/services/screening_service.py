@@ -221,7 +221,24 @@ class ScreeningService:
         # Get text content for analysis
         cover_letter = application.get("cover_letter", "")
         resume_text = resume.get("raw_text", "") if resume else ""
-        full_text = f"{cover_letter}\n{resume_text}".strip()
+
+        # Fetch and parse the PDF document if a URL is available
+        doc_url = (
+            application.get("document_url")
+            or application.get("document")
+            or (resume.get("file_url") if resume else None)
+        )
+        pdf_text = ""
+        if doc_url:
+            try:
+                from src.agents.rubric_generation_mas.tools.pdf_reader import read_pdf
+                pdf_text = await asyncio.to_thread(read_pdf, doc_url)
+                if pdf_text:
+                    logger.info(f"PDF fetched for {candidate_id}: {len(pdf_text)} chars from {doc_url[:60]}")
+            except Exception as e:
+                logger.warning(f"Could not read PDF for {candidate_id}: {e}")
+
+        full_text = "\n".join(filter(None, [cover_letter, resume_text, pdf_text])).strip()
 
         # Job requirements
         qualifications = job.get("qualifications", [])
@@ -276,14 +293,14 @@ class ScreeningService:
             criteria_scores = []
 
             if rubric_criteria:
-                # Use rubric criteria with a neutral score (3/5) as fallback
                 for c in rubric_criteria:
+                    score, evidence = self._score_rubric_criterion(c, full_text)
                     criteria_scores.append(CriterionScore(
                         criterion_key=c.get("id", ""),
                         criterion_name=c.get("name", ""),
                         weight=float(c.get("weight", 0)),
-                        raw_score=3,
-                        evidence="Rule-based fallback (LLM unavailable)",
+                        raw_score=score,
+                        evidence=evidence,
                     ))
             else:
                 # Last resort: default fixed criteria
@@ -424,6 +441,46 @@ class ScreeningService:
         except Exception as e:
             logger.warning(f"LLM explanation failed: {e}")
             return {}
+
+    def _score_rubric_criterion(self, criterion: dict, candidate_text: str) -> tuple[int, str]:
+        """Score a rubric criterion using keyword matching against candidate text.
+
+        Extracts meaningful keywords from the criterion name and description,
+        counts how many appear in the candidate text, and maps that to a 1-5 score.
+        """
+        import re as _re
+
+        text_lower = candidate_text.lower()
+
+        # Pull keywords from criterion name + description (words > 3 chars, skip stopwords)
+        stopwords = {
+            "the", "and", "for", "with", "from", "that", "this", "are", "have",
+            "will", "been", "they", "their", "than", "also", "both", "must",
+            "able", "using", "used", "into", "which", "when", "such", "each",
+        }
+        raw_text = f"{criterion.get('name', '')} {criterion.get('description', '')}"
+        words = _re.findall(r"[a-zA-Z]{4,}", raw_text.lower())
+        keywords = [w for w in words if w not in stopwords]
+        keywords = list(dict.fromkeys(keywords))[:12]  # deduplicate, cap at 12
+
+        if not keywords:
+            return 3, "No keywords extracted from criterion"
+
+        matched = [kw for kw in keywords if kw in text_lower]
+        ratio = len(matched) / len(keywords)
+
+        if ratio >= 0.6:
+            score, note = 4, f"Strong match — found: {', '.join(matched[:4])}"
+        elif ratio >= 0.35:
+            score, note = 3, f"Partial match — found: {', '.join(matched[:3])}"
+        elif ratio >= 0.15:
+            score, note = 2, f"Weak match — found: {', '.join(matched[:2])}"
+        elif matched:
+            score, note = 1, f"Minimal evidence — found: {matched[0]}"
+        else:
+            score, note = 1, "No relevant keywords found in application"
+
+        return score, note
 
     def _score_education(
         self,
