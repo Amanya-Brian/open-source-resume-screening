@@ -225,11 +225,6 @@
     <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resumeModal">
         <i class="bi bi-file-person me-1"></i>Preview Resume
     </button>
-    {% if cover_letter_text %}
-    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#coverLetterModal">
-        <i class="bi bi-envelope-open me-1"></i>Preview Cover Letter
-    </button>
-    {% endif %}
     <button class="btn btn-outline-success" onclick="exportCandidateCSV()">
         <i class="bi bi-filetype-csv me-1"></i>Export CSV
     </button>
@@ -287,28 +282,6 @@
         </div>
     </div>
 </div>
-
-<!-- Cover Letter Modal -->
-{% if cover_letter_text %}
-<div class="modal fade" id="coverLetterModal" tabindex="-1" aria-labelledby="coverLetterModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="coverLetterModalLabel">
-                    <i class="bi bi-envelope-open me-2"></i>{{ result.candidate_name }} — Cover Letter
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div style="white-space:pre-wrap;font-family:inherit;font-size:.92rem;line-height:1.75;color:#212529;">{{ cover_letter_text }}</div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 
 {% block extra_scripts %}
 <script>
