@@ -1,0 +1,67 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+capstone2/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+bin/
+lib/
+include/
+share/
+pyvenv.cfg
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+output.txt
+llm_test_output.txt
+*.log
+.env
+.env.local
+.env.*.local
+
+# Tests
+tests/
+pytest.ini
+
+# Documentation
+*.md
+docs/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Development
+.editorconfig
+*.md
+LICENSE
