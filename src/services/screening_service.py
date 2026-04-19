@@ -5,8 +5,6 @@ import logging
 import re
 from typing import Any, Optional
 
-import requests as _requests
-
 from src.agents.fairness_agent import FairnessAgent, FairnessInput
 from src.agents.base import AgentContext
 from src.models.schemas import ComponentScore, RankedCandidate, ScreeningScore, Student, FairnessReport
@@ -200,35 +198,6 @@ class ScreeningService:
             logger.error(f"generate_fairness_report error for job {job_id}: {e}", exc_info=True)
             return None
 
-    async def _extract_text_from_url(self, url: str) -> str:
-        """Download a PDF from a URL and extract its text.
-
-        Uses the same DocumentParser that the upload flow uses, so
-        screening sees the identical content shown by Preview Resume.
-
-        Returns empty string on any failure — caller falls back to raw_text.
-        """
-        try:
-            from src.services.document_parser import DocumentParser
-
-            def _fetch_and_parse(url: str) -> str:
-                resp = _requests.get(url, timeout=15)
-                resp.raise_for_status()
-                content_type = resp.headers.get("content-type", "")
-                if "pdf" in content_type or url.lower().endswith(".pdf") or resp.content[:4] == b"%PDF":
-                    parser = DocumentParser()
-                    return parser._extract_pdf_from_bytes(resp.content)
-                # Non-PDF (e.g. image stored on Cloudinary) — nothing to extract
-                return ""
-
-            text = await asyncio.to_thread(_fetch_and_parse, url)
-            if text:
-                logger.info(f"Extracted {len(text)} chars from document URL")
-            return text
-        except Exception as e:
-            logger.warning(f"PDF extraction from URL failed ({url}): {e}")
-            return ""
-
     async def _evaluate_candidate(
         self,
         application: dict[str, Any],
@@ -251,18 +220,8 @@ class ScreeningService:
 
         # Get text content for analysis
         cover_letter = application.get("cover_letter", "")
-
-        # Screening is CV-only — cover letter is excluded to prevent unverified claims
-        # from inflating scores. Use the PDF attached to this application (same source
-        # as Preview Resume). Fall back to cached raw_text only if the download fails.
-        document_url = application.get("document_url") or (resume.get("file_url") if resume else None)
-        resume_text = await self._extract_text_from_url(document_url) if document_url else ""
-        if not resume_text:
-            resume_text = resume.get("raw_text", "") if resume else ""
-            if resume_text:
-                logger.debug(f"Using cached raw_text for {candidate_name} (PDF fetch failed or no URL)")
-
-        full_text = resume_text.strip()
+        resume_text = resume.get("raw_text", "") if resume else ""
+        full_text = f"{cover_letter}\n{resume_text}".strip()
 
         # Job requirements
         qualifications = job.get("qualifications", [])
