@@ -119,22 +119,12 @@ class LLMService:
             )
             response.raise_for_status()
 
-                if not response.ok:
-                    try:
-                        body = response.json()
-                    except Exception:
-                        body = response.text[:300]
-                    logger.error(f"Ollama {response.status_code} (attempt {attempt+1}): {body}")
-                    response.raise_for_status()
+            data = response.json()
+            return data.get("message", {}).get("content", "")
 
-                data = response.json()
-                return data.get("message", {}).get("content", "")
-
-            except Exception as e:
-                last_error = e
-                logger.error(f"Ollama generation failed (attempt {attempt+1}): {e}")
-
-        raise last_error
+        except Exception as e:
+            logger.error(f"Ollama generation failed: {e}")
+            raise
 
     def evaluate_candidate(
         self,
