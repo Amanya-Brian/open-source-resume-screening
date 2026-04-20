@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # MongoDB
     mongodb_uri: str = Field(
-        default="mongodb://localhost:27017",
+        default="mongodb+srv://eumubyey_db_user:KfAeDLBcyjQcdg00@resume.iwhgoj1.mongodb.net/",
         description="MongoDB connection URI",
     )
     mongodb_database: str = Field(
