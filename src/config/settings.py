@@ -52,7 +52,7 @@ class Settings(BaseSettings):
         description="Ollama API URL",
     )
     ollama_model: str = Field(
-        default="qwen2.5:1.5b",
+        default="llama3:latest",
         description="Ollama model name (e.g., qwen2.5:1.5b, llama3:latest)",
     )
 

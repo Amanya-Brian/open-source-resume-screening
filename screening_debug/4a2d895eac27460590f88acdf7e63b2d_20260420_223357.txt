@@ -1,0 +1,60 @@
+======================================================================
+SCREENING DEBUG — Job: 4a2d895eac27460590f88acdf7e63b2d  (General Practitioner)
+Generated: 2026-04-20 22:33:57
+Candidates: 5
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).
+  • Certification in Basic Life Support (BLS); ACLS is an added advantage
+  • Valid practicing license from relevant medical council.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Minimum 2 years of clinical experience.
+======================================================================
+
+#1  Fulgence Niyomugaba  |  Score: 4.00/5  (80.0%)  |  Strong - Interview  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Master of Hospital and Healthcare administration (MHA) | University of Rwanda; Kigali/Rwanda
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Director of medical and allied health services where I am regular supervising clinical activities, monitor compliance to national treatment guidelines mainly Emergency care, maternal and child health and enhancing patient safety at Masaka district hospital, Rwanda.
+
+#2  Innocent Twizerimana  |  Score: 2.40/5  (48.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Advanced Diploma in Midwifery
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Midwife at Nyamata Level II Teaching Hospital and Masaka Hospital
+
+#3  MUMPE Leodigarde  |  Score: 2.30/5  (46.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Weak match — found: education
+  [Experience]  Score: 2/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Weak match — found: experience
+
+#4  Jeremie SINGURANAYO  |  Score: 2.15/5  (43.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Weak match — found: education, qualifications
+  [Experience]  Score: 2/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Weak match — found: experience
+
+#5  Andrew Gashayija  |  Score: 1.60/5  (32.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: I hold a Bachelor’s Degree in Information Science in Logistics Management from Mount Kenya University and I am currently pursuing a Master’s Degree in Procurement and Logistics Management.
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: In my current role at MTN Rwanda as Customer Operations Service, I work closely with different departments to analyze customer data, manage service requests, and ensure efficient problem resolution.
+
+======================================================================

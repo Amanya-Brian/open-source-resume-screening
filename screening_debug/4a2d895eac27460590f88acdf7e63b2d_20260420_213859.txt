@@ -1,0 +1,60 @@
+======================================================================
+SCREENING DEBUG — Job: 4a2d895eac27460590f88acdf7e63b2d  (General Practitioner)
+Generated: 2026-04-20 21:38:59
+Candidates: 5
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).
+  • Certification in Basic Life Support (BLS); ACLS is an added advantage
+  • Valid practicing license from relevant medical council.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Minimum 2 years of clinical experience.
+======================================================================
+
+#1  Jeremie SINGURANAYO  |  Score: 2.90/5  (58.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Bachelor of medicine and surgery with honor
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Intern Doctor Ruhengeri hospital Worked as Intern Doctor for 1 year; General Remera Rukoma General practitioner, chair of practitioner DH pharmacovigilance committee; General Polyclinic la -General practitioner at la medicale; April 2022- General Ijabo Clinics Ltd -General practitioner in charge of clinical services
+
+#2  Andrew Gashayija  |  Score: 2.75/5  (55.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Bachelor’s Degree in Information Science in Logistics Management from Mount Kenya University and I am currently pursuing a Master’s Degree in Procurement and Logistics Management
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Customer Operations Service at MTN Rwanda; Connection Shop Manager at ISON Rwanda
+
+#3  Innocent Twizerimana  |  Score: 2.20/5  (44.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Advanced Diploma in nursing and midwifery
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Midwife at Nyamata Level II Teaching Hospital
+
+#4  Fulgence Niyomugaba  |  Score: 2.15/5  (43.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 3/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Master of Hospital and Healthcare Administration (MHA) from University of Rwanda; Kigali/Rwanda
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Director of medical and allied health services at Masaka district hospital, Rwanda
+
+#5  MUMPE Leodigarde  |  Score: 1.80/5  (36.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: This table shows the schools I attended from childhood until I finished 6th grade, including the ones I skipped.
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: No evidence found in CV
+
+======================================================================

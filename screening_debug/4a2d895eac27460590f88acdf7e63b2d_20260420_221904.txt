@@ -1,0 +1,64 @@
+======================================================================
+SCREENING DEBUG — Job: 4a2d895eac27460590f88acdf7e63b2d  (General Practitioner)
+Generated: 2026-04-20 22:19:04
+Candidates: 5
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).
+  • Certification in Basic Life Support (BLS); ACLS is an added advantage
+  • Valid practicing license from relevant medical council.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Minimum 2 years of clinical experience.
+======================================================================
+
+#1  Jeremie SINGURANAYO  |  Score: 2.75/5  (55.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: 2018 Bachelor of medicine and surgery with honor
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Infact, I am a medical doctor with a valid license to practice medicine in Rwanda and have clinical experience for more than 5 years in public and private health settings as well as administrative experience of more than 2 years as clinical director.
+
+#2  Fulgence Niyomugaba  |  Score: 2.05/5  (41.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Master of Hospital and Healthcare administration (MHA) | University of Rwanda; Kigali/Rwanda
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Director of medical and allied health services where I am regular supervising clinical activities, monitor compliance to national treatment guidelines mainly Emergency care, maternal and child health and enhancing patient safety at Masaka district hospital, Rwanda
+
+#3  Innocent Twizerimana  |  Score: 1.90/5  (38.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Advanced Diploma in Midwifery, University of Rwanda , 2018
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Midwife, Nyamata Level II Teaching Hospital | [Start December 2020 – Present
+• Provide antenatal, intrapartum, and postnatal care to women.
+• Monitor and assist with labor and delivery processes.
+• Counsel and educate women on reproductive health and newborn care.
+• Work in collaboration with other healthcare professionals to ensure the best outcomes for mothers and babies.
+
+#4  MUMPE Leodigarde  |  Score: 0.95/5  (19.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: NO NAME OF INSTITUTE QUALIFICATION START DATE END DATE
+  [Experience]  Score: 2/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Leodigarde
+
+#5  Andrew Gashayija  |  Score: 0.85/5  (17.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: I hold a Bachelor’s Degree in Information Science in Logistics Management from Mount Kenya University and I am currently pursuing a Master’s Degree in Procurement and Logistics Management.
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: In my current role at MTN Rwanda as Customer Operations Service, I work closely with different departments to analyze customer data, manage service requests, and ensure efficient problem resolution. Previously, as a Connection Shop Manager, I supervised daily retail operations, coordinated sales activities, monitored performance, and ensured excellent customer service.
+
+======================================================================

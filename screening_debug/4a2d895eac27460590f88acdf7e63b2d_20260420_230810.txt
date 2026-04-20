@@ -1,0 +1,60 @@
+======================================================================
+SCREENING DEBUG — Job: 4a2d895eac27460590f88acdf7e63b2d  (General Practitioner)
+Generated: 2026-04-20 23:08:10
+Candidates: 5
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).
+  • Certification in Basic Life Support (BLS); ACLS is an added advantage
+  • Valid practicing license from relevant medical council.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Minimum 2 years of clinical experience.
+======================================================================
+
+#1  Fulgence Niyomugaba  |  Score: 4.00/5  (80.0%)  |  Strong - Interview  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: See CV
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: See CV
+
+#2  Jeremie SINGURANAYO  |  Score: 4.00/5  (80.0%)  |  Strong - Interview  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: See CV
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: See CV
+
+#3  Innocent Twizerimana  |  Score: 2.65/5  (53.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Advanced Diploma in Midwifery
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Midwife at Nyamata Level II Teaching Hospital and Masaka Hospital, with experience in maternal and child health
+
+#4  MUMPE Leodigarde  |  Score: 1.30/5  (26.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: See CV
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: See CV
+
+#5  Andrew Gashayija  |  Score: 0.95/5  (19.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 0/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: No evidence found in CV
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: No evidence found in CV
+
+======================================================================

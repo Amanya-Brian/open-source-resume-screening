@@ -108,33 +108,22 @@ class LLMService:
                     "model": self.model_name,
                     "messages": messages,
                     "stream": False,
-                    "format": "json",   # Constrain to JSON output — faster, no preamble
+                    "format": "json",
                     "options": {
                         "temperature": temperature,
                         "num_predict": max_tokens,
-                        "num_ctx": 1024,  # qwen2.5:1.5b fits easily; smaller = faster KV cache
+                        "num_ctx": 2048,
                     },
                 },
-                timeout=60,  # qwen2.5:1.5b should respond well within 60s; fail fast otherwise
+                timeout=120,
             )
             response.raise_for_status()
+            data = response.json()
+            return data.get("message", {}).get("content", "")
 
-                if not response.ok:
-                    try:
-                        body = response.json()
-                    except Exception:
-                        body = response.text[:300]
-                    logger.error(f"Ollama {response.status_code} (attempt {attempt+1}): {body}")
-                    response.raise_for_status()
-
-                data = response.json()
-                return data.get("message", {}).get("content", "")
-
-            except Exception as e:
-                last_error = e
-                logger.error(f"Ollama generation failed (attempt {attempt+1}): {e}")
-
-        raise last_error
+        except Exception as e:
+            logger.error(f"Ollama generation failed: {e}")
+            raise
 
     def evaluate_candidate(
         self,
@@ -156,22 +145,157 @@ class LLMService:
         criteria_keys = [c["key"] for c in criteria]
         criteria_keys_str = ", ".join([f'"{k}"' for k in criteria_keys])
 
-        system_prompt = f"""You are an expert HR recruiter evaluating job candidates.
-Score each criterion on a 0-5 scale:
-  5 = Exceeds significantly (exceptional match, strong evidence)
-  4 = Exceeds (above requirements, clear evidence)
-  3 = Meets requirements (solid match)
-  2 = Partially meets (some evidence but gaps)
-  1 = Does not meet (weak or no relevant evidence)
-  0 = Not applicable
+        system_prompt = f"""
+You are a STRICT, RULE-BASED HR scoring engine.
 
-IMPORTANT:
-- Keep evidence BRIEF (max 20 words per criterion)
-- Give VARIED scores - do NOT score everything the same
-- Use these exact criterion keys: [{criteria_keys_str}]
+You MUST follow a FIXED decision process. Do NOT skip steps.
 
-Respond with ONLY valid JSON in this format:
-{{"scores": [{{"criterion": "{criteria_keys[0]}", "score": 3, "evidence": "Brief evidence"}}, {{"criterion": "{criteria_keys[1]}", "score": 4, "evidence": "Brief evidence"}}], "strengths": ["Brief strength"], "concerns": ["Brief concern"]}}"""
+========================================
+STEP 0 — IDENTIFY JOB FIELD
+========================================
+Determine job field (e.g., medicine, accounting).
+
+========================================
+STEP 1 — EXTRACT FROM CV
+========================================
+Extract EXACT text only:
+
+- education_text
+- experience_text
+- job_titles
+- years_experience (number or null)
+
+If missing → "No evidence found in CV"
+
+========================================
+STEP 2 — DETERMINE FIELD MATCH (FIRST)
+========================================
+
+Compare candidate vs job field:
+
+- EXACT_MATCH → same profession (doctor ↔ doctor, accountant ↔ accountant)
+- RELATED_MATCH → adjacent (nurse ↔ doctor, finance ↔ accounting)
+- NO_MATCH → unrelated (logistics ↔ medicine)
+
+========================================
+STEP 3 — EDUCATION MATCH LEVEL
+========================================
+
+Check education_text:
+
+- EXACT_MATCH → degree directly in required field
+- RELATED_MATCH → similar field
+- NO_MATCH → unrelated
+
+MANDATORY OVERRIDES:
+- "Bachelor of Medicine and Surgery" → EXACT_MATCH
+- "Accounting" → EXACT_MATCH
+- "Finance" → EXACT_MATCH
+
+========================================
+STEP 4 — EXPERIENCE MATCH LEVEL
+========================================
+
+Check:
+- job_titles
+- years_experience
+
+Rules:
+- SAME ROLE + enough years → EXACT_MATCH
+- RELATED ROLE → RELATED_MATCH
+- DIFFERENT FIELD → NO_MATCH
+
+NUMERIC RULES:
+- If years < required → NOT EXACT_MATCH
+- If no years → max RELATED_MATCH
+
+========================================
+STEP 5 — CONVERT MATCH → SCORE
+========================================
+
+EDUCATION:
+- EXACT_MATCH → 4-5 (or 5 if Master's+)
+- RELATED_MATCH → 3-4
+- NO_MATCH → 0-1
+
+EXPERIENCE:
+- EXACT_MATCH → 4–5
+- RELATED_MATCH → 3
+- NO_MATCH → 0-1
+
+========================================
+STEP 6 — HARD FIELD CONSTRAINT
+========================================
+
+If FIELD MATCH = NO_MATCH:
+→ education ≤ 2
+→ experience ≤ 2
+
+NO EXCEPTIONS
+
+========================================
+STEP 7 — EVIDENCE RULES
+========================================
+
+- MUST be exact CV text
+- <25 words
+- NO job description text
+- NO placeholders
+
+If invalid:
+→ "No evidence found in CV"
+
+========================================
+STEP 5b — TECHNICAL SKILLS SCORING
+========================================
+
+Check skills_text from CV:
+
+- Skills DIRECTLY match job tools/methods → score 4–5
+- Some overlap with job needs → score 2–3
+- No relevant skills found → score 1
+- No skills mentioned → score 0
+
+========================================
+STEP 5c — COMMUNICATION SKILLS SCORING
+========================================
+
+Read actual CV sentences and grade writing quality:
+
+- Excellent grammar, clear and professional → score 5
+- Good, minor errors only → score 4
+- Acceptable, some errors but readable → score 3
+- Basic, frequent errors → score 2
+- Poor, hard to understand → score 1
+
+Quote one sentence from the CV as evidence.
+
+========================================
+STEP 8 — FINAL VALIDATION
+========================================
+
+CHECK:
+
+1. If EXACT_MATCH exists → score ≥ 4
+2. If NO_MATCH → score ≤ 2
+3. If years < required → experience ≤ 2
+4. No invalid evidence text
+
+If ANY violation:
+→ FIX BEFORE OUTPUT
+
+========================================
+OUTPUT JSON ONLY
+========================================
+
+{{
+  "scores": [
+    {",\n    ".join(f'{{"criterion": "{k}", "score": 0, "evidence": "text"}}' for k in criteria_keys)}
+  ],
+  "strengths": ["text"],
+  "concerns": ["text"]
+}}
+"""
 
         # Format criteria for prompt
         criteria_text = "\n".join([
@@ -188,24 +312,43 @@ Respond with ONLY valid JSON in this format:
         if resps:
             job_text += "\n\nKEY RESPONSIBILITIES:\n" + "\n".join([f"- {r}" for r in resps[:5]])
 
-        # Trim candidate text — less input = faster prefill; 1500 chars is plenty for scoring
-        max_candidate_len = 1500
+        # Guard: empty candidate text means nothing to evaluate — don't hallucinate
+        if not candidate_text or not candidate_text.strip():
+            logger.warning("evaluate_candidate: candidate_text is empty — returning no scores to trigger rule-based fallback")
+            return self._default_evaluation(criteria)
+
+        # Extract education before trimming so we always capture the full section
+        education_fact = self._extract_education_from_text(candidate_text)
+
+        # Trim candidate text — 2500 chars gives enough content to judge grammar and skills
+        max_candidate_len = 2500
         if len(candidate_text) > max_candidate_len:
             candidate_text = candidate_text[:max_candidate_len] + "..."
 
-        prompt = f"""Evaluate this candidate for the job.
+        prompt = f"""You are scoring a candidate's CV against a job posting.
 
+=== JOB REQUIREMENTS (benchmark only — do NOT copy these words into evidence) ===
 {job_text}
+=== END JOB REQUIREMENTS ===
 
-EVALUATION CRITERIA (score EACH one 0-5 with specific evidence):
+=== VERIFIED CANDIDATE EDUCATION (extracted directly from CV — use this exact text for education scoring) ===
+{education_fact}
+=== END VERIFIED EDUCATION ===
+
+=== CANDIDATE CV (ALL evidence must come from here — read carefully) ===
+{candidate_text}
+=== END CANDIDATE CV ===
+
+SCORE EACH CRITERION (use only what is written in the CV above):
 {criteria_text}
 
-CANDIDATE'S APPLICATION TEXT:
----
-{candidate_text}
----
+BEFORE writing each score, answer these questions:
+- Education: Is the candidate's degree field EXACTLY one of the fields the job requires? YES → score 4. NO but related → score 3. Unrelated → score 2. Master's/PhD in exact field → score 5.
+- Experience: Do the candidate's job titles or work history belong to the SAME industry/role as this job? SAME role → score 4–5. ADJACENT → score 3. DIFFERENT field → score 1–2.
+- Technical skills: Do the specific tools, technologies, or methods in the CV match what this job needs?
+- Communication: Is the CV written clearly with correct grammar and professional language?
+- A score of 3 = adequately meets the requirement. A score of 4 = direct match. A score of 5 = exceptional match.
 
-Score each criterion. Be specific about what you found or didn't find.
 Respond with ONLY the JSON:"""
 
         try:
@@ -220,6 +363,20 @@ Respond with ONLY the JSON:"""
 
             result = self._parse_json_response(response)
 
+            # Handle flat format: {"education": {"value": 2, ...}, "experience": {...}, ...}
+            if not result.get("scores") and any(k in result for k in criteria_keys):
+                converted = []
+                for k in criteria_keys:
+                    entry = result.get(k, {})
+                    if isinstance(entry, dict):
+                        score_val = entry.get("value") or entry.get("score") or 0
+                        evidence  = entry.get("evidence") or entry.get("justification") or "See CV"
+                    else:
+                        score_val, evidence = (entry if isinstance(entry, int) else 0), "See CV"
+                    converted.append({"criterion": k, "score": int(score_val), "evidence": evidence})
+                logger.info(f"Converted flat LLM format to scores array ({len(converted)} criteria)")
+                result = {"scores": converted, "strengths": result.get("strengths", []), "concerns": result.get("concerns", [])}
+
             if not result.get("scores"):
                 logger.warning(f"LLM missing 'scores'. Keys: {list(result.keys())}. Raw: {response[:300]}")
                 return self._default_evaluation(criteria)
@@ -231,6 +388,14 @@ Respond with ONLY the JSON:"""
             # Log each score
             for s in result["scores"]:
                 logger.info(f"  LLM: {s.get('criterion')}={s.get('score')} | {str(s.get('evidence', ''))[:80]}")
+
+            # Post-process constraint: experience >= 4 implies technical_skills >= 3
+            scores_by_key = {s.get("criterion"): s for s in result["scores"]}
+            exp_score = scores_by_key.get("experience", {}).get("score", 0)
+            tech = scores_by_key.get("technical_skills")
+            if exp_score >= 4 and tech and tech.get("score", 3) < 3:
+                logger.info(f"  Correcting technical_skills from {tech['score']} to 3 (experience={exp_score})")
+                tech["score"] = 3
 
             return result
 
@@ -313,6 +478,58 @@ Respond with ONLY JSON:"""
                 "strengths": [],
                 "concerns": [],
             }
+
+    @staticmethod
+    def _extract_education_from_text(text: str) -> str:
+        """Pull the education section out of candidate text so the LLM cannot substitute job requirements."""
+        lines = text.splitlines()
+        edu_lines: list[str] = []
+        in_section = False
+
+        section_headers = {"education", "qualification", "academic", "schooling", "training"}
+        exit_headers    = {"experience", "employment", "work", "skill", "achievement",
+                           "reference", "summary", "objective", "profile", "competenc",
+                           "additional", "language", "certification", "core"}
+        degree_words    = {"bachelor", "master", "phd", "doctorate", "diploma", "degree",
+                           "tvet", "certificate", "o-level", "a-level", "bsc", "msc",
+                           "mba", "university", "college", "institute", "a2", "high school",
+                           "secondary", "primary"}
+
+        for line in lines:
+            stripped   = line.strip()
+            lower      = stripped.lower()
+
+            if not stripped:
+                continue
+
+            # Enter education section
+            if any(h in lower for h in section_headers) and len(stripped) < 60:
+                in_section = True
+                continue
+
+            # Exit education section when another major header appears
+            if in_section and any(h in lower for h in exit_headers) and len(stripped) < 60:
+                in_section = False
+
+            if in_section and len(stripped) > 4:
+                edu_lines.append(stripped)
+            elif not in_section and any(w in lower for w in degree_words):
+                edu_lines.append(stripped)
+
+        if not edu_lines:
+            return "No educational qualifications found in CV"
+
+        # Deduplicate and cap
+        seen: set[str] = set()
+        unique: list[str] = []
+        for l in edu_lines:
+            if l not in seen:
+                seen.add(l)
+                unique.append(l)
+
+        result = " | ".join(unique[:8])
+        logger.info(f"  Education extracted: {result}")
+        return result
 
     def _parse_json_response(self, response: str) -> dict[str, Any]:
         """Parse JSON from LLM response, handling common LLM output issues.

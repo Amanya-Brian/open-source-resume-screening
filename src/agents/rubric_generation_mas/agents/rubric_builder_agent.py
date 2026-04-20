@@ -1,50 +1,63 @@
 # agents/rubric_builder_agent.py
 
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
-# Keywords that signal a responsibility is high-priority
-_HIGH_WEIGHT_KEYWORDS = [
-    "safety", "compli", "certif", "licens", "primary", "core", "critical",
-    "ensure", "maintain", "manag", "supervis", "lead", "operat", "perform",
-    "adher", "regulat", "standard", "protocol", "assess", "diagnos",
+# Fixed criteria — always in this order with these keys and base weights
+_FIXED_CRITERIA = [
+    {
+        "id":     "education",
+        "name":   "Education and Qualifications",
+        "weight": 0.25,
+        "keywords": ["degree", "qualif", "certif", "licens", "diploma", "bachelor",
+                     "master", "phd", "accredit", "registr", "training", "educat"],
+    },
+    {
+        "id":     "experience",
+        "name":   "Experience",
+        "weight": 0.35,
+        "keywords": ["experience", "year", "worked", "role", "position", "employ",
+                     "background", "history", "previous", "prior", "proven"],
+    },
+    {
+        "id":     "technical_skills",
+        "name":   "Technical Skills",
+        "weight": 0.25,
+        "keywords": ["skill", "technical", "software", "tool", "system", "equipment",
+                     "technolog", "proficien", "competen", "knowleg", "operat",
+                     "perform", "procedure", "protocol", "method"],
+    },
+    {
+        "id":     "communication_skills",
+        "name":   "Communication Skills",
+        "weight": 0.15,
+        "keywords": ["communicat", "report", "document", "record", "present",
+                     "liaise", "coordinat", "team", "interpersonal", "verbal",
+                     "written", "collaborat", "stakeholder"],
+    },
 ]
 
-# Keywords that signal a responsibility is lower-priority / supporting
-_LOW_WEIGHT_KEYWORDS = [
-    "assist", "support", "help", "participat", "contribut", "attend",
-    "liaise", "coordin", "report", "document", "record",
-]
 
+def _build_description(criterion: dict, qualifications: list, responsibilities: list) -> str:
+    """Build a criterion description by pulling relevant lines from the job context."""
+    keywords = criterion["keywords"]
+    matched = []
 
-def _name_from_responsibility(r: str) -> str:
-    """Turn a responsibility sentence into a short criterion name (first 5 words)."""
-    words = r.rstrip(".,;:").split()
-    return " ".join(words[:5]) if len(words) > 5 else r.rstrip(".,;:")
+    for source in list(qualifications) + list(responsibilities):
+        source_lower = source.lower()
+        if any(kw in source_lower for kw in keywords):
+            clean = source.strip().rstrip(".,;:")
+            if clean and clean not in matched:
+                matched.append(clean)
 
+    if matched:
+        # Use up to 3 most relevant lines joined into a description sentence
+        return "; ".join(matched[:3])
 
-def _importance_score(responsibility: str) -> float:
-    """Return a relative importance score (0.7 – 1.5) based on keywords."""
-    r = responsibility.lower()
-    for kw in _HIGH_WEIGHT_KEYWORDS:
-        if kw in r:
-            return 1.5
-    for kw in _LOW_WEIGHT_KEYWORDS:
-        if kw in r:
-            return 0.7
-    return 1.0
-
-
-def _assign_weights(responsibilities: list) -> list:
-    """Assign varied weights based on responsibility importance.
-
-    Uses keyword analysis so weights reflect actual job priorities without
-    requiring an LLM call — works reliably even when Ollama is unavailable.
-    """
-    scores = [_importance_score(r) for r in responsibilities]
-    total = sum(scores)
-    return [round(s / total, 4) for s in scores]
+    # Fallback: generic description
+    return f"Evaluate candidate's {criterion['name'].lower()} against job requirements"
 
 
 def _normalize_weights(criteria: list) -> list:
@@ -63,35 +76,29 @@ def _normalize_weights(criteria: list) -> list:
 def rubric_builder_agent(
     document_context: dict,
     key_responsibilities: list,
-    current_rubric: dict = None,  # kept for API compatibility, not used
+    current_rubric: dict = None,
 ) -> dict:
-    """Build a rubric from job responsibilities using pure-logic weight assignment.
+    """Build a rubric with 4 fixed criteria derived from job qualifications and responsibilities.
 
-    No LLM call — weights are derived deterministically from keyword importance
-    so the rubric is always generated regardless of Ollama availability.
+    Always produces: Education & Qualifications, Experience, Technical Skills,
+    Communication Skills. Descriptions are populated from the job's actual
+    qualifications/requirements and responsibilities so scoring is job-specific.
     """
-    if not key_responsibilities:
-        return {
-            "title": "Draft Rubric",
-            "version": 1,
-            "criteria": [],
-            "total_weight": 0.0,
-        }
+    qualifications = document_context.get("qualifications", [])
+    # key_responsibilities is passed separately; also try document_context fallback
+    responsibilities = key_responsibilities or document_context.get("responsibilities", [])
 
-    weights = _assign_weights(key_responsibilities)
+    criteria = []
+    for template in _FIXED_CRITERIA:
+        description = _build_description(template, qualifications, responsibilities)
+        criteria.append({
+            "id":          template["id"],
+            "key":         template["id"],   # screening_service and rubrics API use "key"
+            "name":        template["name"],
+            "description": description,
+            "weight":      template["weight"],
+        })
 
-    criteria = [
-        {
-            "id":                     f"C{i+1}",
-            "name":                   _name_from_responsibility(r),
-            "description":            r,
-            "linked_responsibility":  r,
-            "weight":                 weights[i],
-        }
-        for i, r in enumerate(key_responsibilities)
-    ]
-
-    # Final safety pass — guarantee weights sum to 1.0
     criteria = _normalize_weights(criteria)
 
     seniority = document_context.get("seniority", "")
@@ -105,7 +112,7 @@ def rubric_builder_agent(
     }
 
     logger.info(
-        f"rubric_builder_agent: built {len(criteria)} criteria — "
-        f"weights: {[c['weight'] for c in criteria]}"
+        f"rubric_builder_agent: built {len(criteria)} fixed criteria — "
+        f"{[c['name'] for c in criteria]}"
     )
     return rubric

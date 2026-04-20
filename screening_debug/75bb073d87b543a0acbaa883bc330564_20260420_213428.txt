@@ -1,0 +1,106 @@
+======================================================================
+SCREENING DEBUG — Job: 75bb073d87b543a0acbaa883bc330564  (Senior Accountant)
+Generated: 2026-04-20 21:34:28
+Candidates: 10
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).
+  • Professional certification such as CPA, ACCA, or equivalent is required.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Experience working with insurers, donors, or public health financing systems is an added advantage.
+  • Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.
+  • Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+======================================================================
+
+#1  Jean d’Amour Habimana  |  Score: 3.75/5  (75.0%)  |  YES - Interview  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 3/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Bachelor's degree in Accounting, currently pursuing CPA (Advanced Level Two) and an MBA in Accounting and Finance
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: Senior Accountant – Kipharma Pharmacy – Unipharma Ltd (December 2022 – Present), Internal Auditor – Unguka Bank Plc (January 2022 – November 2022), Accountant – Lighting Construction Company Ltd (December 2019 – December 2021)
+
+#2  Theophile Murasira  |  Score: 2.75/5  (55.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Bachelor’s Degree in Business Administration (Finance) from the University of Rwanda
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: over five years of experience in accounting, taxation, and financial compliance
+
+#3  Alphonse Nsengiyumva  |  Score: 2.75/5  (55.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Bachelor of Arts in Communication (Business concentration) from Southern New Hampshire University
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: Prior experience working with insurers, donors, or public health financing systems is an added advantage.
+
+#4  Kega john  |  Score: 2.75/5  (55.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Bachelor’s degree in Business Administration and a CPA in progress
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: Senior Accountant position, Financial Management experience, Budgeting, Forecasting, Performance Tracking, Risk Advising
+
+#5  Janvier Ntibimenya  |  Score: 2.35/5  (47.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Weak match — found: requirements
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: Partial match — found: experience, requirements
+
+#6  Pacifique MUKESHIMANA  |  Score: 2.15/5  (43.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 3/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Bachelor's degree in business administration in specialization of finance
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: Worked as an school accountant since 2021 until now; Internship at Rwanda Revenue Authority
+
+#7  Valens Nzabandora  |  Score: 2.15/5  (43.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 3/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: University Of Kigali – Kigali, Rwanda Expected to Graduate August 2026 | Masters Of Science in Finance | African Leadership University – Kigali, Rwanda Sep 2017 - February 2021 | BA (Hons) in International Business and Trade, Finance Major | ICPAR – Institute of Certified Public Accountants Rwanda – Kigali, Rwanda Ongoing
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: Senior Accountant January 2021 - September 2022
+
+#8  Ombeni Ladegonde  |  Score: 1.90/5  (38.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: school diploma certificate
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: work experience in healthcare and finance roles
+
+#9  Schadrack HAKIZAYESU  |  Score: 1.00/5  (20.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: No relevant keywords found in application
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: No relevant keywords found in application
+
+#10  Theogene ABAZARAMA  |  Score: 0.85/5  (17.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor’s degree in Finance, Accounting, Economics, or Business Administration (Master’s degree preferred).; Professional certification such as CPA, ACCA, or equivalent is required.
+  Candidate has: Theogene ABAZARAMA's education text
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Experience working with insurers, donors, or public health financing systems is an added advantage.; Minimum of 5–8 years of progressive financial management experience, with 3–5 years in a senior leadership role.; Prior experience in a hospital, healthcare organization, NGO, or health insurance environment is strongly preferre
+  Candidate has: No evidence found in CV
+
+======================================================================

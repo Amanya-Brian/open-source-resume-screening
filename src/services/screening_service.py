@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import os
 import re
+from datetime import datetime
 from typing import Any, Optional
 
 from src.agents.fairness_agent import FairnessAgent, FairnessInput
@@ -165,6 +167,9 @@ class ScreeningService:
         for i, eval in enumerate(evaluations, 1):
             eval.detailed_notes = f"Rank #{i} of {len(evaluations)} candidates"
 
+        # Write debug file with Education & Experience keywords and scores
+        self._write_debug_file(job_id, job, evaluations)
+
         # Store candidate results immediately (no fairness yet)
         method = "llm" if self.use_llm else "rule_based"
         await self._store_screening_results(job_id, evaluations, method=method)
@@ -218,15 +223,16 @@ class ScreeningService:
         candidate_name = f"{application.get('student_firstname', '')} {application.get('student_lastname', '')}".strip()
         candidate_id = application.get("student_id", "")
 
-        # Get text content for analysis
-        cover_letter = application.get("cover_letter", "")
-        resume_text = resume.get("raw_text", "") if resume else ""
+        # CV text only — cover letter is excluded from screening
+        resume_text = (resume.get("raw_text") or "") if resume else ""
 
-        # Fetch and parse the PDF document if a URL is available
+        # Resolve PDF URL — check every field where it might live
         doc_url = (
             application.get("document_url")
+            or application.get("file_url")
             or application.get("document")
             or (resume.get("file_url") if resume else None)
+            or (resume.get("document_url") if resume else None)
         )
         pdf_text = ""
         if doc_url:
@@ -235,10 +241,13 @@ class ScreeningService:
                 pdf_text = await asyncio.to_thread(read_pdf, doc_url)
                 if pdf_text:
                     logger.info(f"PDF fetched for {candidate_id}: {len(pdf_text)} chars from {doc_url[:60]}")
+                else:
+                    logger.warning(f"PDF returned empty text for {candidate_id} — url: {doc_url[:80]}")
             except Exception as e:
                 logger.warning(f"Could not read PDF for {candidate_id}: {e}")
 
-        full_text = "\n".join(filter(None, [cover_letter, resume_text, pdf_text])).strip()
+        full_text = "\n".join(filter(None, [resume_text, pdf_text])).strip()
+        logger.info(f"Candidate CV text for {candidate_name}: {len(full_text)} chars (raw={len(resume_text)}, pdf={len(pdf_text)})")
 
         # Job requirements
         qualifications = job.get("qualifications", [])
@@ -309,7 +318,7 @@ class ScreeningService:
                 criteria_scores.append(self._score_technical_skills(full_text, qualifications))
                 criteria_scores.append(self._score_industry_knowledge(full_text, job_title, responsibilities))
                 criteria_scores.append(self._score_leadership(full_text))
-                criteria_scores.append(self._score_communication(cover_letter))
+                criteria_scores.append(self._score_communication(full_text))
 
             evaluation.criteria_scores = criteria_scores
             evaluation.calculate_totals()
@@ -1012,6 +1021,86 @@ class ScreeningService:
         except Exception as e:
             logger.error(f"Fairness analysis error: {e}", exc_info=True)
             return None
+
+    def _write_debug_file(self, job_id: str, job: dict, evaluations: list) -> None:
+        """Write Education and Experience keyword matches and scores to a txt file."""
+        _EDU_KEYS  = {"education", "education_and_qualifications", "qualifications"}
+        _EXP_KEYS  = {"experience"}
+        _EDU_NAMES = {"education", "qualifications", "education and qualifications"}
+        _EXP_NAMES = {"experience"}
+
+        _here = os.path.dirname(os.path.abspath(__file__))
+        out_dir = os.path.join(_here, "..", "..", "screening_debug")
+        os.makedirs(out_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(out_dir, f"{job_id}_{timestamp}.txt")
+
+        # Extract job-level education and experience requirements once
+        _edu_kw = {"degree", "qualif", "certif", "licens", "diploma", "bachelor",
+                   "master", "phd", "academic", "educat", "school", "tvet"}
+        _exp_kw = {"experience", "year", "worked", "background", "proven",
+                   "prior", "previous", "history", "role", "employ"}
+
+        all_reqs = list(job.get("qualifications", [])) + list(job.get("responsibilities", []))
+        job_edu_reqs = [r for r in all_reqs if any(k in r.lower() for k in _edu_kw)]
+        job_exp_reqs = [r for r in all_reqs if any(k in r.lower() for k in _exp_kw)]
+
+        lines: list[str] = []
+        lines.append("=" * 70)
+        lines.append(f"SCREENING DEBUG — Job: {job_id}  ({job.get('title', '')})")
+        lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"Candidates: {len(evaluations)}")
+        lines.append("")
+        lines.append("JOB EDUCATION REQUIREMENTS:")
+        if job_edu_reqs:
+            for r in job_edu_reqs:
+                lines.append(f"  • {r}")
+        else:
+            lines.append("  (none extracted)")
+        lines.append("")
+        lines.append("JOB EXPERIENCE REQUIREMENTS:")
+        if job_exp_reqs:
+            for r in job_exp_reqs:
+                lines.append(f"  • {r}")
+        else:
+            lines.append("  (none extracted)")
+        lines.append("=" * 70)
+
+        for rank, ev in enumerate(evaluations, 1):
+            lines.append("")
+            method = "RULE-BASED" if "rule-based" in (ev.detailed_notes or "") else "LLM"
+            lines.append(f"#{rank}  {ev.candidate_name}  |  Score: {ev.total_weighted_score:.2f}/5  ({ev.percentage:.1f}%)  |  {ev.recommendation}  [{method}]")
+            lines.append("-" * 60)
+
+            edu_scores = [cs for cs in ev.criteria_scores
+                          if cs.criterion_key.lower() in _EDU_KEYS
+                          or cs.criterion_name.lower() in _EDU_NAMES]
+            exp_scores = [cs for cs in ev.criteria_scores
+                          if cs.criterion_key.lower() in _EXP_KEYS
+                          or cs.criterion_name.lower() in _EXP_NAMES]
+
+            for cs in edu_scores:
+                lines.append(f"  [Education]   Score: {cs.raw_score}/5  (weight {int(cs.weight*100)}%)")
+                lines.append(f"  Job requires:  {'; '.join(job_edu_reqs[:3]) if job_edu_reqs else 'N/A'}")
+                lines.append(f"  Candidate has: {cs.evidence}")
+
+            for cs in exp_scores:
+                lines.append(f"  [Experience]  Score: {cs.raw_score}/5  (weight {int(cs.weight*100)}%)")
+                lines.append(f"  Job requires:  {'; '.join(job_exp_reqs[:3]) if job_exp_reqs else 'N/A'}")
+                lines.append(f"  Candidate has: {cs.evidence}")
+
+            if not edu_scores and not exp_scores:
+                lines.append("  (No Education or Experience criteria found in rubric)")
+
+        lines.append("")
+        lines.append("=" * 70)
+
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+            logger.info(f"Debug file written: {path}")
+        except Exception as e:
+            logger.warning(f"Could not write debug file: {e}")
 
     async def _store_screening_results(
         self,

@@ -1,0 +1,101 @@
+======================================================================
+SCREENING DEBUG — Job: 992aae60a7944c988061ddc88e32057b  (Radiographer / Imaging Technologist)
+Generated: 2026-04-20 21:56:11
+Candidates: 9
+
+JOB EDUCATION REQUIREMENTS:
+  • Diploma or Degree in Medical Imaging / Radiography.
+  • Radiation safety certification preferred.
+  • Valid professional license.
+
+JOB EXPERIENCE REQUIREMENTS:
+  (none extracted)
+======================================================================
+
+#1  Nsanzimana Joseph  |  Score: 3.00/5  (60.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: University of Rwanda (bachelor’s in medical imaging science 2021-2025)
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Perform X-ray, ultrasound, or other imaging procedures as authorized
+
+#2  Augustin MUNYAMAHORO  |  Score: 2.75/5  (55.0%)  |  Maybe - Hold  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: I am an aspiring Medical Imaging April 2021 – Oct 2025 | Specialist. BSc with Honors in Medical Imaging Sciences, University of | Rwanda.
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Kigali
+Rwanda
+August 2025 – Present
+Medical Imaging Officer (MIO), Kibungo L2TH.
+Perform a variety of imaging procedures, including ultrasound, CT +
+(250) 784804789/728795447
+
+#3  Jean claude Umutoni  |  Score: 2.20/5  (44.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Bachelor’s degree in medical imaging sciences (A0) From University of Rwanda, College of medicine and health sciences.
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Radiology; Medical Imaging technologist
+
+#4  Louise Tuyishime  |  Score: 2.20/5  (44.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: LLM evaluation
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: LLM evaluation
+
+#5  Fiston HARERIMANA  |  Score: 2.20/5  (44.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Bachelor of Medicine and Surgery
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Medical Imaging Officer position at your institution
+
+#6  MUGISHA PACIFIQUE  |  Score: 1.90/5  (38.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Bachelor of Business and Information Communication Technology | Mount Kenya University (MKU), Kigali | Certificate in Automobile Engine Technology | Advanced Level Certificate | APADE, Kigali – 2017
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Software Development Intern – IFMIS Department | Trainer (Part-time) | Networking & Marketing Intern (Outer Seller Agent)
+
+#7  Bizimana Placide  |  Score: 1.80/5  (36.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: N0 INSTITUTION STUDY PERIOD SUBJECT AWARDS
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Medical Imaging Officer at University Teaching Hospital of Butare (CHUB)
+
+#8  Salomon MUNSIMWIZA  |  Score: 1.80/5  (36.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Bachelor of Science with honors in medical imaging, 2021-2025: University of Rwanda
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: 
+
+#9  MUMPE Leodigarde  |  Score: 1.80/5  (36.0%)  |  No - Reject  [LLM]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: EDUCATION BACKGROUND
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: This table shows the schools I attended from childhood until I finished 6th grade, including the ones I skipped.
+
+======================================================================
