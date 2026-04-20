@@ -29,7 +29,7 @@ class ScoreLevel(IntEnum):
 
 class RecommendationLevel:
     """Recommendation levels based on weighted score percentage."""
-    STRONG_YES = "STRONG YES - Interview"
+    STRONG_YES = "Strong - Interview"
     YES = "YES - Interview"
     MAYBE = "Maybe - Hold"
     NO = "No - Reject"
@@ -196,7 +196,7 @@ class ScoringConfiguration(BaseModel):
         5: "Exceeds requirements significantly",
     })
     recommendation_thresholds: dict[str, tuple[float, float]] = Field(default_factory=lambda: {
-        "STRONG YES - Interview": (80, 100),
+        "Strong - Interview": (80, 100),
         "YES - Interview": (65, 79.99),
         "Maybe - Hold": (50, 64.99),
         "No - Reject": (0, 49.99),

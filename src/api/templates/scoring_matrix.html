@@ -307,7 +307,10 @@
                     <p class="text-muted small mb-0">Loading criteria…</p>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn-modal-save" onclick="openAddCriterionModal()">
+                    <i class="bi bi-plus me-1"></i>Add Criterion
+                </button>
                 <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Done</button>
             </div>
         </div>
@@ -400,6 +403,66 @@
     </div>
 </div>
 
+<!-- Add Criterion Modal -->
+<div class="modal fade" id="criterionAddModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
+        <div class="modal-content">
+            <div class="modal-header pb-2">
+                <div>
+                    <h5 class="modal-title fw-semibold mb-0" style="font-size:.95rem;">Add Criterion</h5>
+                </div>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body pt-3">
+                <form autocomplete="off" onsubmit="return false;">
+
+                    <!-- Name -->
+                    <div class="mb-4">
+                        <label class="field-label" for="criterionAddName">Name</label>
+                        <input type="text" class="form-control" id="criterionAddName"
+                               placeholder="e.g. Problem Solving"
+                               style="font-size:.88rem;">
+                    </div>
+
+                    <!-- Description -->
+                    <div class="mb-4">
+                        <label class="field-label" for="criterionAddDescription">Description</label>
+                        <textarea class="form-control" id="criterionAddDescription" rows="3"
+                                  placeholder="What this criterion evaluates…"
+                                  style="font-size:.88rem; resize:none;"></textarea>
+                    </div>
+
+                    <!-- Weight -->
+                    <div>
+                        <div class="d-flex justify-content-between align-items-baseline mb-2">
+                            <label class="field-label mb-0" for="criterionAddWeightInput">Weight</label>
+                            <span class="small text-muted" id="criterionAddWeightHint"
+                                  style="font-size:.76rem;"></span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <input type="number" class="form-control" id="criterionAddWeightInput"
+                                   min="0" max="100" step="1" placeholder="0"
+                                   style="max-width:110px;font-size:.88rem;font-weight:600;text-align:center;">
+                            <span style="font-size:.88rem;color:#6c757d;font-weight:500;">%</span>
+                        </div>
+                        <p class="form-text mt-2 mb-0" style="font-size:.75rem;">
+                            All criteria weights must total 100% or less.
+                        </p>
+                    </div>
+
+                </form>
+            </div>
+
+            <div class="modal-footer gap-2 pt-2">
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn-modal-save" id="criterionAddSaveBtn"
+                        onclick="addCriterion()">Add Criterion</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Delete Rubric Modal -->
 <div class="modal fade" id="rubricDeleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
@@ -453,10 +516,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const criterionAddModalEl = document.getElementById('criterionAddModal');
+    if (criterionAddModalEl) {
+        criterionAddModalEl.addEventListener('hidden.bs.modal', () => {
+            cleanupBackdrops();
+        });
+    }
+
     // Initialise Bootstrap tooltips for action buttons
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
         new bootstrap.Tooltip(el, { trigger: 'hover' });
     });
+
+    // Auto-open edit modal if ?edit=<rubricId> is in the URL
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get('edit');
+    if (editId) {
+        openEditRubricModal(editId, '');
+    }
 });
 
 async function viewRubricMatrix(rubricId) {
@@ -536,7 +613,7 @@ async function viewRubricMatrix(rubricId) {
             </div>`).join('');
 
         const recommendations = [
-            { range: '80 – 100%', label: 'Strong Yes', action: 'Proceed to Interview', dot: '#198754' },
+            { range: '80 – 100%', label: 'Strong', action: 'Proceed to Interview', dot: '#198754' },
             { range: '65 – 79%',  label: 'Yes',        action: 'Proceed to Interview', dot: '#22c55e' },
             { range: '50 – 64%',  label: 'Maybe',      action: 'Hold for Review',      dot: '#fd7e14' },
             { range: 'Below 50%', label: 'No',         action: 'Reject',               dot: '#dc3545' },
@@ -680,13 +757,20 @@ async function openEditRubricModal(rubricId, rubricName) {
                     ${weightPercent}%
                 </span>
 
-                <!-- Edit icon button — only passes key + numbers, no strings -->
+                <!-- Edit / Delete criterion buttons -->
                 <button type="button"
                         class="rubric-action-btn"
                         style="flex-shrink:0;"
                         onclick="openEditCriterionModal('${rubricId}', '${c.key}', ${weightPercent}, ${otherWeightsPercent})"
                         data-bs-toggle="tooltip" data-bs-placement="top" title="Edit criterion">
                     <i class="bi bi-pencil"></i>
+                </button>
+                <button type="button"
+                        class="rubric-action-btn btn-delete"
+                        style="flex-shrink:0;"
+                        onclick="deleteCriterion('${c.key}')"
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Delete criterion">
+                    <i class="bi bi-trash"></i>
                 </button>
             </div>`;
         }).join('') : `
@@ -878,6 +962,144 @@ async function saveCriterion() {
         } else {
             alert(`Error updating criterion: ${error.message}`);
         }
+    }
+}
+
+function makeKey(name) {
+    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'criterion';
+    let key = base, n = 2;
+    const existing = (currentCriteria || []).map(c => c.key || c.id || '');
+    while (existing.includes(key)) key = base + '_' + n++;
+    return key;
+}
+
+function openAddCriterionModal() {
+    const totalPct = Math.round(currentCriteria.reduce((s, c) => s + (c.weight || 0), 0) * 100);
+    const remaining = 100 - totalPct;
+
+    const nameEl  = document.getElementById('criterionAddName');
+    const descEl  = document.getElementById('criterionAddDescription');
+    const inputEl = document.getElementById('criterionAddWeightInput');
+    const hintEl  = document.getElementById('criterionAddWeightHint');
+    const saveBtn = document.getElementById('criterionAddSaveBtn');
+
+    if (nameEl)  nameEl.value  = '';
+    if (descEl)  descEl.value  = '';
+    if (inputEl) { inputEl.value = ''; inputEl.max = remaining; }
+    if (hintEl)  { hintEl.textContent = `Available: ${remaining}% remaining`; hintEl.classList.remove('text-danger'); }
+    if (saveBtn) saveBtn.disabled = false;
+
+    if (inputEl) {
+        inputEl.oninput = () => {
+            const val = Number(inputEl.value);
+            const wouldBe = totalPct + val;
+            if (!Number.isNaN(val) && hintEl) {
+                if (wouldBe > 100) {
+                    hintEl.textContent = `Total would be ${wouldBe}% — max allowed is ${remaining}%`;
+                    hintEl.classList.add('text-danger');
+                    if (saveBtn) saveBtn.disabled = true;
+                } else {
+                    hintEl.textContent = `Available: ${remaining}% — total would be ${wouldBe}%`;
+                    hintEl.classList.remove('text-danger');
+                    if (saveBtn) saveBtn.disabled = false;
+                }
+            }
+        };
+    }
+
+    const addModalEl = document.getElementById('criterionAddModal');
+    const addModal = bootstrap.Modal.getOrCreateInstance(addModalEl);
+    addModal.show();
+}
+
+async function addCriterion() {
+    const nameEl   = document.getElementById('criterionAddName');
+    const descEl   = document.getElementById('criterionAddDescription');
+    const weightEl = document.getElementById('criterionAddWeightInput');
+    const hintEl   = document.getElementById('criterionAddWeightHint');
+
+    const name        = nameEl  ? nameEl.value.trim()  : '';
+    const description = descEl  ? descEl.value.trim()  : '';
+    const weightPct   = Number(weightEl ? weightEl.value : '');
+
+    if (!name) {
+        if (typeof showToast === 'function') showToast('Criterion name cannot be empty.', 'error');
+        else alert('Criterion name cannot be empty.');
+        return;
+    }
+
+    const totalPct  = Math.round(currentCriteria.reduce((s, c) => s + (c.weight || 0), 0) * 100);
+    const remaining = 100 - totalPct;
+
+    if (Number.isNaN(weightPct) || weightPct < 0 || weightPct > remaining) {
+        const msg = weightPct > remaining
+            ? `Weight cannot exceed ${remaining}% available.`
+            : 'Please enter a valid weight between 0 and 100.';
+        if (typeof showToast === 'function') showToast(msg, 'error');
+        else alert(msg);
+        return;
+    }
+
+    const key = makeKey(name);
+    const newCriterion = { id: key, key, name, description, weight: Math.round(weightPct) / 100 };
+    const updatedCriteria = [...currentCriteria, newCriterion];
+
+    try {
+        const response = await fetch(`/api/rubrics/${currentRubricId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ criteria: updatedCriteria }),
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+            if (typeof showToast === 'function') showToast(data.error || 'Failed to add criterion.', 'error');
+            else alert(data.error || 'Failed to add criterion.');
+            return;
+        }
+
+        if (typeof showToast === 'function') showToast('Criterion added successfully.', 'success');
+
+        const addModalEl = document.getElementById('criterionAddModal');
+        const addModal = bootstrap.Modal.getInstance(addModalEl) || bootstrap.Modal.getOrCreateInstance(addModalEl);
+        addModalEl.addEventListener('hidden.bs.modal', () => {
+            cleanupBackdrops();
+            openEditRubricModal(currentRubricId, data.rubric?.name || '');
+        }, { once: true });
+        addModal.hide();
+    } catch (error) {
+        if (typeof showToast === 'function') showToast(`Error adding criterion: ${error.message}`, 'error');
+        else alert(`Error adding criterion: ${error.message}`);
+    }
+}
+
+async function deleteCriterion(criterionKey) {
+    const criterion = currentCriteria.find(c => (c.key || c.id) === criterionKey);
+    const name = criterion ? criterion.name : criterionKey;
+
+    if (!confirm(`Delete criterion "${name}"? This cannot be undone.`)) return;
+
+    const updatedCriteria = currentCriteria.filter(c => (c.key || c.id) !== criterionKey);
+
+    try {
+        const response = await fetch(`/api/rubrics/${currentRubricId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ criteria: updatedCriteria }),
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+            if (typeof showToast === 'function') showToast(data.error || 'Failed to delete criterion.', 'error');
+            else alert(data.error || 'Failed to delete criterion.');
+            return;
+        }
+
+        if (typeof showToast === 'function') showToast('Criterion deleted.', 'success');
+        openEditRubricModal(currentRubricId, data.rubric?.name || '');
+    } catch (error) {
+        if (typeof showToast === 'function') showToast(`Error deleting criterion: ${error.message}`, 'error');
+        else alert(`Error deleting criterion: ${error.message}`);
     }
 }
 

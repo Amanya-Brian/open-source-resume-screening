@@ -469,6 +469,12 @@ def screen_job_candidates(job_id: str):
                     "message": f"Found {total} candidates — starting evaluation...",
                 })
 
+                # Delete all previous screening results and fairness report for this job
+                # so every run is a clean, independent exercise
+                deleted = await mongo.delete_many("screening_results", {"job_id": job_id})
+                await mongo.delete_many("fairness_reports", {"_id": f"fairness-{job_id}"})
+                logger.info(f"Cleared {deleted} previous screening results for job {job_id}")
+
                 svc = ScreeningService(mongo_service=mongo)
 
                 def on_progress(current, total, name, msg):
