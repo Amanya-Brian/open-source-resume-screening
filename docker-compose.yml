@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resume-screening-app
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=resume_screening
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000
+      # Service-to-service communication (Docker Compose network)
+      - TALENTMATCH_API_URL=http://talentmatch-api:5000
+      - OLLAMA_URL=http://ollama:11434
+   
+    depends_on:
+      - mongodb
+      - talentmatch-api
+    networks:
+      - resume-screening-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mongodb:
+    image: mongo:7.0
+    container_name: resume-screening-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=resume_screening
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - resume-screening-network
+    restart: unless-stopped
+
+  talentmatch-api:
+    build:
+      context: ../tm-data-fetch-api
+    container_name: talentmatch-api
+    ports:
+      - "5001:5000"
+    networks:
+      - resume-screening-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+
+networks:
+  resume-screening-network:
+    driver: bridge
