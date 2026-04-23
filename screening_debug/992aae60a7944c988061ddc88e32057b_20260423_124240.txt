@@ -1,0 +1,96 @@
+======================================================================
+SCREENING DEBUG — Job: 992aae60a7944c988061ddc88e32057b  (Radiographer / Imaging Technologist)
+Generated: 2026-04-23 12:42:40
+Candidates: 9
+
+JOB EDUCATION REQUIREMENTS:
+  • Diploma or Degree in Medical Imaging / Radiography.
+  • Radiation safety certification preferred.
+  • Valid professional license.
+
+JOB EXPERIENCE REQUIREMENTS:
+  (none extracted)
+======================================================================
+
+#1  Bizimana Placide  |  Score: 3.85/5  (77.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: 1. University of
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Medical Imaging Officer at Tel: 0790127467; 4 yrs total
+
+#2  Jean claude Umutoni  |  Score: 3.50/5  (70.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: DEGREE AND CERTIFICATES
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: I am Jean claude umutoni at the medical imaging officer; duration unclear total
+
+#3  Augustin MUNYAMAHORO  |  Score: 3.45/5  (69.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Specialist. BSc with Honors in Medical Imaging Sciences, University of
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Medical Imaging Technologist at RESUME; 4 yrs total
+
+#4  Louise Tuyishime  |  Score: 3.10/5  (62.0%)  |  Maybe - Hold  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: 2019- University (Bachelor's Degree in University of Rwanda, Remera
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: KingFaisalHRwanda specifiedhospitals intern procedures in andUR Medical General; 3 yrs total
+
+#5  Fiston HARERIMANA  |  Score: 3.10/5  (62.0%)  |  Maybe - Hold  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Dear Hiring Manager,
+  [Experience]  Score: 4/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Medical Imaging Officer at  fistonharerimana1@gmail.com; 3 yrs total
+
+#6  Nsanzimana Joseph  |  Score: 2.40/5  (48.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: • University of Rwanda (bachelor's in medical imaging science 2021-2025)
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: INTERNSHIP EXPERIENCES; duration unclear total
+
+#7  Salomon MUNSIMWIZA  |  Score: 2.40/5  (48.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: ➢ Bachelor of Science with honors in medical imaging,
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: To the Hiring Manager at Talent match; duration unclear total
+
+#8  MUGISHA PACIFIQUE  |  Score: 2.00/5  (40.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: Bachelor of Business and Information Communication Technology
+  [Experience]  Score: 2/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: Dear Hiring Manager,; 7 yrs total
+
+#9  MUMPE Leodigarde  |  Score: 1.40/5  (28.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Imaging / Radiography.; Radiation safety certification preferred.; Valid professional license.
+  Candidate has: 1 BTR RWAMIKO TVET BTR RWAMIKO TVET A2 2019 2022
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  N/A
+  Candidate has: ✓ Internet Research: Web browsing at Searching, Digital research skills.; duration unclear total
+
+======================================================================
