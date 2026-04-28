@@ -121,6 +121,9 @@ class LLMService:
             data = response.json()
             return data.get("message", {}).get("content", "")
 
+            data = response.json()
+            return data.get("message", {}).get("content", "")
+
         except Exception as e:
             logger.error(f"Ollama generation failed: {e}")
             raise
