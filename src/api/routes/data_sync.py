@@ -531,8 +531,9 @@ def screen_job_candidates(job_id: str):
                     },
                 })
 
-                # Run fairness after screening is already marked complete.
-                # The task status is "complete" above so the UI won't wait for this.
+                # LLM explanations and fairness both run after the task is already
+                # marked "complete" so the UI gets results without waiting for these.
+                await svc.generate_llm_explanations(job_id, evaluations)
                 await svc.generate_fairness_report(job_id, evaluations)
 
             loop.run_until_complete(_screen())

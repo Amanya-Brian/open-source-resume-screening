@@ -137,10 +137,9 @@ class ScreeningService:
         logger.info(f"Pre-fetched {len(resume_map)}/{total} resumes")
 
         # PDF downloads + rule-based scoring are I/O-bound and CPU-cheap — run
-        # up to 8 candidates concurrently.  Ollama is single-threaded, so LLM
-        # explanation calls are serialised with a separate semaphore.
-        _sem     = asyncio.Semaphore(min(8, len(applications)))
-        _llm_sem = asyncio.Semaphore(1)
+        # up to 8 candidates concurrently.  LLM explanations are intentionally
+        # excluded here; call generate_llm_explanations() after this returns.
+        _sem = asyncio.Semaphore(min(8, len(applications)))
 
         async def _evaluate_one(idx: int, app: dict) -> CandidateEvaluation:
             async with _sem:
@@ -156,7 +155,6 @@ class ScreeningService:
                 resume = resume_map.get(app.get("student_id"))
                 return await self._evaluate_candidate(
                     application=app, job=job, resume=resume, rubric=rubric,
-                    llm_sem=_llm_sem,
                 )
 
         evaluations = list(await asyncio.gather(*[_evaluate_one(i, app) for i, app in enumerate(applications)]))
@@ -203,6 +201,54 @@ class ScreeningService:
         except Exception as e:
             logger.error(f"generate_fairness_report error for job {job_id}: {e}", exc_info=True)
             return None
+
+    async def generate_llm_explanations(
+        self,
+        job_id: str,
+        evaluations: list["CandidateEvaluation"],
+    ) -> None:
+        """Generate LLM strengths/concerns for all evaluations and update MongoDB.
+
+        Intended to be called AFTER screen_job_candidates() returns so the main
+        screening result is available to the user immediately.  Runs LLM calls
+        serially (Ollama is single-threaded) and upserts each result in MongoDB.
+        """
+        if not self.use_llm:
+            return
+
+        try:
+            get_llm_service().initialize()
+            self._llm_initialized = True
+        except Exception as e:
+            logger.warning(f"LLM not available for explanations: {e}")
+            return
+
+        job = await self.mongo.find_one("job_listings", {"_id": job_id})
+        job_title = job.get("title", "") if job else ""
+
+        llm_sem = asyncio.Semaphore(1)
+
+        async def _explain_one(ev: "CandidateEvaluation") -> None:
+            async with llm_sem:
+                try:
+                    strengths, concerns = await self._generate_llm_explanation_brief(
+                        ev.candidate_name, job_title, ev.criteria_scores, ev.percentage
+                    )
+                    if strengths:
+                        ev.strengths = strengths
+                    if concerns:
+                        ev.concerns = concerns
+                    await self.mongo.update_one(
+                        "screening_results",
+                        {"_id": f"{job_id}-{ev.candidate_id}"},
+                        {"$set": {"strengths": ev.strengths, "concerns": ev.concerns}},
+                        upsert=False,
+                    )
+                except Exception as e:
+                    logger.warning(f"LLM explanation failed for {ev.candidate_name}: {e}")
+
+        await asyncio.gather(*[_explain_one(ev) for ev in evaluations])
+        logger.info(f"LLM explanations stored for {len(evaluations)} candidates (job {job_id})")
 
     async def _evaluate_candidate(
         self,
@@ -293,11 +339,12 @@ class ScreeningService:
         evaluation.calculate_totals()
         logger.info(f"Rule-based scoring for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
 
-        # ── LLM explanation (optional) — serialised via llm_sem ──────────────
-        _sem = llm_sem or asyncio.Semaphore(1)
-        if self.use_llm and len(full_text) >= 100:
+        # ── LLM explanation — only runs if llm_sem is passed explicitly ────────
+        # When called from screen_job_candidates(), llm_sem is None so this is
+        # skipped.  Call generate_llm_explanations() afterwards for LLM output.
+        if self.use_llm and llm_sem is not None and len(full_text) >= 100:
             try:
-                async with _sem:
+                async with llm_sem:
                     strengths, concerns = await self._generate_llm_explanation_brief(
                         candidate_name, job_title, criteria_scores, evaluation.percentage
                     )
