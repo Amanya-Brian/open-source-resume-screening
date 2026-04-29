@@ -1,0 +1,77 @@
+======================================================================
+SCREENING DEBUG — Job: 6da45a71098a462c946b7875199a7b4e  (Laboratory Technician)
+Generated: 2026-04-23 18:09:55
+Candidates: 7
+
+JOB EDUCATION REQUIREMENTS:
+  • Diploma or Degree in Medical Laboratory Sciences.
+  • Valid practicing license
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Minimum 1–2 years of laboratory experience preferred
+======================================================================
+
+#1  Annah BATETE  |  Score: 4.60/5  (92.0%)  |  Strong - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: Bachelor of degree in Biomedical laboratory 2023
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: MEDICAL DIRECTOR at Kivu Hills Medical Center; 3 yrs total
+
+#2  Aline NIYIGENA  |  Score: 3.55/5  (71.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: 2023 - 2025 support. Skilled in communicating with patients, managing health data, and building collaborative partnershi
+  [Experience]  Score: 2/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: Head of Department -Hematology; 6 yrs total
+
+#3  Dany NSABUMUKIZA  |  Score: 2.40/5  (48.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: 2016- 2018 UNIVERSTY OF GITWE Bachelor's degree Biomedical
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: No work experience found in CV
+
+#4  Uwiragiye Clarisse  |  Score: 2.05/5  (41.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: -High School diploma in Mathematics Chemistry and Biology: Ecole de sciences de
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: Head of Biruyi health center; duration unclear total
+
+#5  JEAN DAMASCENE NGIRUWONSANGA  |  Score: 1.70/5  (34.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: No educational qualifications found in CV
+  [Experience]  Score: 3/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: Subject:Job application To General Director of Kivu hills Medical Center at I have the honor to address your high person
+
+#6  NDAYISHIMIYE Jean damascene  |  Score: 1.00/5  (20.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: No educational qualifications found in CV
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: No work experience found in CV
+
+#7  Constantine Nyirambonimpaye  |  Score: 1.00/5  (20.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Diploma or Degree in Medical Laboratory Sciences.; Valid practicing license
+  Candidate has: No educational qualifications found in CV
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 1–2 years of laboratory experience preferred
+  Candidate has: No work experience found in CV
+
+======================================================================

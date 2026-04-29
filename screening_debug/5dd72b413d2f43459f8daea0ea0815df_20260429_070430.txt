@@ -1,0 +1,103 @@
+======================================================================
+SCREENING DEBUG — Job: 5dd72b413d2f43459f8daea0ea0815df  (Marketing and Sales associates)
+Generated: 2026-04-29 07:04:30
+Candidates: 10
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Previous experience in marketing or sales is an advantage
+======================================================================
+
+#1  NDINDILIYIMANA Theogene  |  Score: 4.75/5  (95.0%)  |  Strong - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: Dear Hiring Manager,
+  [Experience]  Score: 4/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: Marketing | E-Commerce | Sales | Digital Financial Services | CRM Specialist | Business; duration unclear total
+
+#2  ngabonziza gyslain  |  Score: 4.75/5  (95.0%)  |  Strong - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: Bachelor's Degree - Business & Technology-Related Field (2020 - 2023)
+  [Experience]  Score: 4/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: MARKETING & COMMUNICATIONS ASSOCIATE; 4 yrs total
+
+#3  Achille Bizimana  |  Score: 3.70/5  (74.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: BSc in Economics - University of Rwanda, College of Business & Economics
+  [Experience]  Score: 3/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has:  Operations & Coordination at logistics, workflow organization, stakeholder support; 8 yrs total
+
+#4  UMUHUMUZA Isabelle  |  Score: 3.55/5  (71.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: 2021-2024 University of Rwanda - UR CBE
+  [Experience]  Score: 4/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: Rwanda College of Business and Economics. She is serving as a Professional Intern at the; 1 yrs total
+
+#5  Marcus Adaboke  |  Score: 3.55/5  (71.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: Bachelors of Business Administration in Finance (First Class Honors) | Sep 2022 - June 2026 |
+  [Experience]  Score: 4/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: Subject: Application for Marketing & Sales Associate; duration unclear total
+
+#6  Justin Nkunzimana  |  Score: 3.30/5  (66.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 5/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: Master's in Media and Communications
+  [Experience]  Score: 3/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: Dear Hiring Manager,; duration unclear total
+
+#7  Angel Auma  |  Score: 3.25/5  (65.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 3/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: Results-oriented professional with over 3 years of progressive experience in project management, human resources, and co
+  [Experience]  Score: 4/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: Marketing & Leadership Intern; 4 yrs total
+
+#8  Charles Mutuyemungu  |  Score: 2.90/5  (58.0%)  |  Maybe - Hold  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: Charles Mutuyemungu
+  [Experience]  Score: 4/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: RE: Applying for the Position of the Marketing and Sales associates; 19 yrs total
+
+#9  PLACIDE Dushimiyimana  |  Score: 1.40/5  (28.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: No educational qualifications found in CV
+  [Experience]  Score: 1/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has:  Interiordesigner at  painter; duration unclear total
+
+#10  Christian TUYISENGE  |  Score: 1.25/5  (25.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 35%)
+  Job requires:  Bachelor’s degree or diploma in Marketing, Sales, Business Administration, or a related field.
+  Candidate has: No educational qualifications found in CV
+  [Experience]  Score: 2/5  (weight 25%)
+  Job requires:  Previous experience in marketing or sales is an advantage
+  Candidate has: Designation: Senior Lecturer and; 1 yrs total
+
+======================================================================

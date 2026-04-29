@@ -1,0 +1,60 @@
+======================================================================
+SCREENING DEBUG — Job: 4a2d895eac27460590f88acdf7e63b2d  (General Practitioner)
+Generated: 2026-04-23 12:45:21
+Candidates: 5
+
+JOB EDUCATION REQUIREMENTS:
+  • Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).
+  • Certification in Basic Life Support (BLS); ACLS is an added advantage
+  • Valid practicing license from relevant medical council.
+
+JOB EXPERIENCE REQUIREMENTS:
+  • Minimum 2 years of clinical experience.
+======================================================================
+
+#1  Fulgence Niyomugaba  |  Score: 3.95/5  (79.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Bachelor of Medicine, Bachelor of Surgery (MBBS)
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Director of Medical and Allied Health Services (DMAHS) at June 2025 - Up to now; 5 yrs total
+
+#2  Jeremie SINGURANAYO  |  Score: 3.95/5  (79.0%)  |  YES - Interview  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 4/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: 2018 Bachelor of medicine and surgery with honor
+  [Experience]  Score: 5/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Re: Application for a position of a medical doctor; 5 yrs total
+
+#3  Innocent Twizerimana  |  Score: 2.65/5  (53.0%)  |  Maybe - Hold  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 3/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: Midwife
+  [Experience]  Score: 2/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Dear Hiring Manager,; 8 yrs total
+
+#4  MUMPE Leodigarde  |  Score: 1.80/5  (36.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 1/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: 1 BTR RWAMIKO TVET BTR RWAMIKO TVET A2 2019 2022
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: ✓ Internet Research: Web browsing at Searching, Digital research skills.; duration unclear total
+
+#5  Andrew Gashayija  |  Score: 1.25/5  (25.0%)  |  No - Reject  [RULE-BASED]
+------------------------------------------------------------
+  [Education]   Score: 2/5  (weight 25%)
+  Job requires:  Bachelor of Medicine and Bachelor of Surgery (MBBS or equivalent).; Certification in Basic Life Support (BLS); ACLS is an added advantage; Valid practicing license from relevant medical council.
+  Candidate has: 10 March 2026
+  [Experience]  Score: 1/5  (weight 35%)
+  Job requires:  Minimum 2 years of clinical experience.
+  Candidate has: Hiring Manager at Talent Match; duration unclear total
+
+======================================================================

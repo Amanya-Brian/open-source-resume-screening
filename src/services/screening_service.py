@@ -14,9 +14,6 @@ from src.models.scoring import (
     CandidateEvaluation,
     CriterionScore,
     DefaultCriteria,
-    EvaluationCriterion,
-    RecommendationLevel,
-    ScoreLevel,
     ScoringConfiguration,
 )
 from src.services.embedding_service import EmbeddingService
@@ -139,10 +136,10 @@ class ScreeningService:
             resume_map = {}
         logger.info(f"Pre-fetched {len(resume_map)}/{total} resumes")
 
-        # LLM (Ollama) is single-threaded — concurrent requests queue internally and risk
-        # timeouts, so serialize when using LLM. Rule-based is pure CPU and safe to run
-        # fully in parallel.
-        _sem = asyncio.Semaphore(1 if self.use_llm else len(applications))
+        # PDF downloads + rule-based scoring are I/O-bound and CPU-cheap — run
+        # up to 8 candidates concurrently.  LLM explanations are intentionally
+        # excluded here; call generate_llm_explanations() after this returns.
+        _sem = asyncio.Semaphore(min(8, len(applications)))
 
         async def _evaluate_one(idx: int, app: dict) -> CandidateEvaluation:
             async with _sem:
@@ -156,7 +153,9 @@ class ScreeningService:
                     except Exception:
                         pass
                 resume = resume_map.get(app.get("student_id"))
-                return await self._evaluate_candidate(application=app, job=job, resume=resume, rubric=rubric)
+                return await self._evaluate_candidate(
+                    application=app, job=job, resume=resume, rubric=rubric,
+                )
 
         evaluations = list(await asyncio.gather(*[_evaluate_one(i, app) for i, app in enumerate(applications)]))
 
@@ -203,12 +202,61 @@ class ScreeningService:
             logger.error(f"generate_fairness_report error for job {job_id}: {e}", exc_info=True)
             return None
 
+    async def generate_llm_explanations(
+        self,
+        job_id: str,
+        evaluations: list["CandidateEvaluation"],
+    ) -> None:
+        """Generate LLM strengths/concerns for all evaluations and update MongoDB.
+
+        Intended to be called AFTER screen_job_candidates() returns so the main
+        screening result is available to the user immediately.  Runs LLM calls
+        serially (Ollama is single-threaded) and upserts each result in MongoDB.
+        """
+        if not self.use_llm:
+            return
+
+        try:
+            get_llm_service().initialize()
+            self._llm_initialized = True
+        except Exception as e:
+            logger.warning(f"LLM not available for explanations: {e}")
+            return
+
+        job = await self.mongo.find_one("job_listings", {"_id": job_id})
+        job_title = job.get("title", "") if job else ""
+
+        llm_sem = asyncio.Semaphore(1)
+
+        async def _explain_one(ev: "CandidateEvaluation") -> None:
+            async with llm_sem:
+                try:
+                    strengths, concerns = await self._generate_llm_explanation_brief(
+                        ev.candidate_name, job_title, ev.criteria_scores, ev.percentage
+                    )
+                    if strengths:
+                        ev.strengths = strengths
+                    if concerns:
+                        ev.concerns = concerns
+                    await self.mongo.update_one(
+                        "screening_results",
+                        {"_id": f"{job_id}-{ev.candidate_id}"},
+                        {"$set": {"strengths": ev.strengths, "concerns": ev.concerns}},
+                        upsert=False,
+                    )
+                except Exception as e:
+                    logger.warning(f"LLM explanation failed for {ev.candidate_name}: {e}")
+
+        await asyncio.gather(*[_explain_one(ev) for ev in evaluations])
+        logger.info(f"LLM explanations stored for {len(evaluations)} candidates (job {job_id})")
+
     async def _evaluate_candidate(
         self,
         application: dict[str, Any],
         job: dict[str, Any],
         resume: Optional[dict[str, Any]],
         rubric: Optional[dict] = None,
+        llm_sem: Optional[asyncio.Semaphore] = None,
     ) -> CandidateEvaluation:
         """Evaluate a single candidate.
 
@@ -267,74 +315,84 @@ class ScreeningService:
         if rubric and rubric.get("criteria"):
             rubric_criteria = rubric["criteria"]
 
-        # Try LLM-based evaluation if enabled and candidate has enough text to evaluate
-        llm_succeeded = False
-        if self.use_llm and len(full_text) >= 100:
+        # ── Rule-based scoring (always primary) ────────────────────────────────
+        from src.services.cv_extractor import RuleBasedScorer
+
+        criteria_to_score = rubric_criteria or [
+            {"key": "education",           "name": "Education & Qualifications", "weight": 0.25},
+            {"key": "experience",          "name": "Relevant Experience",        "weight": 0.35},
+            {"key": "technical_skills",    "name": "Technical Skills",           "weight": 0.25},
+            {"key": "communication_skills","name": "Communication Skills",       "weight": 0.15},
+        ]
+
+        # score_all cleans text once, extracts education/experience/skills once,
+        # then scores every criterion from the pre-extracted data.
+        criteria_scores = RuleBasedScorer.score_all(
+            cv_text=full_text,
+            qualifications=qualifications,
+            responsibilities=responsibilities,
+            job_title=job_title,
+            criteria=criteria_to_score,
+        )
+
+        evaluation.criteria_scores = criteria_scores
+        evaluation.calculate_totals()
+        logger.info(f"Rule-based scoring for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
+
+        # ── LLM explanation — only runs if llm_sem is passed explicitly ────────
+        # When called from screen_job_candidates(), llm_sem is None so this is
+        # skipped.  Call generate_llm_explanations() afterwards for LLM output.
+        if self.use_llm and llm_sem is not None and len(full_text) >= 100:
             try:
-                criteria_scores, strengths, concerns = await self._evaluate_with_llm(
-                    full_text, qualifications, responsibilities, rubric_criteria=rubric_criteria
-                )
-                # Check if LLM actually scored (not all zeros from failed matching)
-                if criteria_scores and any(cs.raw_score > 0 for cs in criteria_scores):
-                    evaluation.criteria_scores = criteria_scores
-                    evaluation.calculate_totals()
-
-                    # Use strengths/concerns from the LLM evaluation directly
-                    # (skip the separate explanation call to save time)
-                    evaluation.strengths = strengths if strengths else self._extract_strengths(criteria_scores, full_text)
-                    evaluation.concerns = concerns if concerns else self._extract_concerns(criteria_scores, qualifications)
-
-                    # Build summary from the scores themselves
-                    evaluation.detailed_notes = (
-                        f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title}. "
-                        f"Recommendation: {evaluation.recommendation}."
+                async with llm_sem:
+                    strengths, concerns = await self._generate_llm_explanation_brief(
+                        candidate_name, job_title, criteria_scores, evaluation.percentage
                     )
-
-                    llm_succeeded = True
-                    logger.info(f"LLM evaluation for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
-                else:
-                    logger.warning(f"LLM returned empty/zero scores for {candidate_name}, using rule-based")
+                evaluation.strengths = strengths or self._extract_strengths(criteria_scores, full_text)
+                evaluation.concerns  = concerns  or self._extract_concerns(criteria_scores, qualifications)
             except Exception as e:
-                logger.warning(f"LLM evaluation failed for {candidate_name}, falling back to rule-based: {e}")
-
-        # Fallback to rule-based evaluation (always runs if LLM failed)
-        if not llm_succeeded:
-            criteria_scores = []
-
-            if rubric_criteria:
-                for c in rubric_criteria:
-                    score, evidence = self._score_rubric_criterion(c, full_text)
-                    criteria_scores.append(CriterionScore(
-                        criterion_key=c.get("id", ""),
-                        criterion_name=c.get("name", ""),
-                        weight=float(c.get("weight", 0)),
-                        raw_score=score,
-                        evidence=evidence,
-                    ))
-            else:
-                # Last resort: default fixed criteria
-                criteria_scores.append(self._score_education(full_text, qualifications))
-                criteria_scores.append(self._score_experience(full_text, qualifications))
-                criteria_scores.append(self._score_technical_skills(full_text, qualifications))
-                criteria_scores.append(self._score_industry_knowledge(full_text, job_title, responsibilities))
-                criteria_scores.append(self._score_leadership(full_text))
-                criteria_scores.append(self._score_communication(full_text))
-
-            evaluation.criteria_scores = criteria_scores
-            evaluation.calculate_totals()
-
-            # Extract detailed strengths and concerns
+                logger.warning(f"LLM explanation failed for {candidate_name}: {e}")
+                evaluation.strengths = self._extract_strengths(criteria_scores, full_text)
+                evaluation.concerns  = self._extract_concerns(criteria_scores, qualifications)
+        else:
             evaluation.strengths = self._extract_strengths(criteria_scores, full_text)
-            evaluation.concerns = self._extract_concerns(criteria_scores, qualifications)
+            evaluation.concerns  = self._extract_concerns(criteria_scores, qualifications)
 
-            evaluation.detailed_notes = (
-                f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title} "
-                f"(rule-based evaluation). Recommendation: {evaluation.recommendation}."
-            )
-
-            logger.info(f"Rule-based evaluation for {candidate_name}: {evaluation.total_weighted_score:.2f}/5 ({evaluation.recommendation})")
+        evaluation.detailed_notes = (
+            f"{candidate_name} scored {evaluation.percentage:.0f}% for {job_title}. "
+            f"Recommendation: {evaluation.recommendation}."
+        )
 
         return evaluation
+
+    async def _generate_llm_explanation_brief(
+        self,
+        candidate_name: str,
+        job_title: str,
+        scores: list,
+        percentage: float,
+    ) -> tuple[list[str], list[str]]:
+        """Ask the LLM to generate strengths and concerns based on the rule-based scores."""
+        llm = get_llm_service()
+        if not self._llm_initialized:
+            llm.initialize()
+            self._llm_initialized = True
+
+        scores_text = "\n".join(
+            f"- {cs.criterion_name}: {cs.raw_score}/5 — {cs.evidence}"
+            for cs in scores
+        )
+        prompt = (
+            f"Candidate: {candidate_name}\nRole: {job_title}\nOverall: {percentage:.0f}%\n\n"
+            f"Scores:\n{scores_text}\n\n"
+            f"List 2-3 strengths and 1-2 concerns as short bullet points. "
+            f'JSON only: {{"strengths": ["..."], "concerns": ["..."]}}'
+        )
+        system = "You are an HR assistant. Respond with ONLY valid JSON."
+
+        result = await asyncio.to_thread(llm.generate, prompt, system, 300, 0.3)
+        parsed = llm._parse_json_response(result)
+        return parsed.get("strengths", []), parsed.get("concerns", [])
 
     async def _evaluate_with_llm(
         self,
@@ -491,11 +549,7 @@ class ScreeningService:
 
         return score, note
 
-    def _score_education(
-        self,
-        text: str,
-        qualifications: list[str],
-    ) -> CriterionScore:
+    def _score_education(self, text: str) -> CriterionScore:
         """Score education and qualifications."""
         criterion = DefaultCriteria.EDUCATION
         text_lower = text.lower()
@@ -534,7 +588,6 @@ class ScreeningService:
     def _score_experience(
         self,
         text: str,
-        qualifications: list[str],
     ) -> CriterionScore:
         """Score relevant experience."""
         criterion = DefaultCriteria.EXPERIENCE
@@ -1068,7 +1121,7 @@ class ScreeningService:
 
         for rank, ev in enumerate(evaluations, 1):
             lines.append("")
-            method = "RULE-BASED" if "rule-based" in (ev.detailed_notes or "") else "LLM"
+            method = "RULE-BASED"
             lines.append(f"#{rank}  {ev.candidate_name}  |  Score: {ev.total_weighted_score:.2f}/5  ({ev.percentage:.1f}%)  |  {ev.recommendation}  [{method}]")
             lines.append("-" * 60)
 
